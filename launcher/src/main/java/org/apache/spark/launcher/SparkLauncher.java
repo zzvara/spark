@@ -544,17 +544,6 @@ public class SparkLauncher {
     cmd.add(join(File.separator, builder.getSparkHome(), "bin", script));
     cmd.addAll(builder.buildSparkSubmitArgs());
 
-    // Since the child process is a batch script, let's quote things so that special characters are
-    // preserved, otherwise the batch interpreter will mess up the arguments. Batch scripts are
-    // weird.
-    if (isWindows()) {
-      List<String> winCmd = new ArrayList<>();
-      for (String arg : cmd) {
-        winCmd.add(quoteForBatchScript(arg));
-      }
-      cmd = winCmd;
-    }
-
     ProcessBuilder pb = new ProcessBuilder(cmd.toArray(new String[cmd.size()]));
     for (Map.Entry<String, String> e : builder.childEnv.entrySet()) {
       pb.environment().put(e.getKey(), e.getValue());
