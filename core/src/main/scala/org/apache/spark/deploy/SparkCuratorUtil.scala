@@ -21,7 +21,7 @@ import scala.collection.JavaConverters._
 
 import org.apache.curator.framework.{CuratorFramework, CuratorFrameworkFactory}
 import org.apache.curator.retry.ExponentialBackoffRetry
-import org.apache.zookeeper.KeeperException
+//import org.apache.zookeeper.KeeperException
 
 import org.apache.spark.SparkConf
 import org.apache.spark.internal.Logging
@@ -49,7 +49,7 @@ private[spark] object SparkCuratorUtil extends Logging {
       try {
         zk.create().creatingParentsIfNeeded().forPath(path)
       } catch {
-        case nodeExist: KeeperException.NodeExistsException =>
+        //case nodeExist: KeeperException.NodeExistsException =>
           // do nothing, ignore node existing exception.
         case e: Exception => throw e
       }

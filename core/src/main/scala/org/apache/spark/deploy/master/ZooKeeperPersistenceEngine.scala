@@ -23,7 +23,7 @@ import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 
 import org.apache.curator.framework.CuratorFramework
-import org.apache.zookeeper.CreateMode
+//import org.apache.zookeeper.CreateMode
 
 import org.apache.spark.SparkConf
 import org.apache.spark.deploy.SparkCuratorUtil
@@ -62,7 +62,7 @@ private[master] class ZooKeeperPersistenceEngine(conf: SparkConf, val serializer
     val serialized = serializer.newInstance().serialize(value)
     val bytes = new Array[Byte](serialized.remaining())
     serialized.get(bytes)
-    zk.create().withMode(CreateMode.PERSISTENT).forPath(path, bytes)
+    //zk.create().withMode(CreateMode.PERSISTENT).forPath(path, bytes)
   }
 
   private def deserializeFromFile[T](filename: String)(implicit m: ClassTag[T]): Option[T] = {

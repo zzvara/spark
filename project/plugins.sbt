@@ -1,3 +1,7 @@
+resolvers in ThisBuild += "INFO Nexus repository" at "http://info.ilab.sztaki.hu/nexus/repository/maven-releases"
+
+resolvers += "INFO Nexus repository" at "http://info.ilab.sztaki.hu/nexus/repository/maven-releases"
+
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.11.2")
 
 addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "5.0.1")

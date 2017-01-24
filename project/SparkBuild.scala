@@ -246,6 +246,7 @@ object SparkBuild extends PomBuild {
 
     // Override SBT's default resolvers:
     resolvers := Seq(
+	    "INFO Nexus repository" at "http://info.ilab.sztaki.hu/nexus/repository/maven-releases",
       DefaultMavenRepository,
       Resolver.mavenLocal,
       Resolver.file("local", file(Path.userHome.absolutePath + "/.ivy2/local"))(Resolver.ivyStylePatterns)
