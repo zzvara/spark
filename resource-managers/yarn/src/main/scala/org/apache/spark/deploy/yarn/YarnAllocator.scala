@@ -429,6 +429,7 @@ private[yarn] class YarnAllocator(
    * Visible for testing.
    */
   def handleAllocatedContainers(allocatedContainers: Seq[Container]): Unit = {
+    /*
     val containersToUse = new ArrayBuffer[Container](allocatedContainers.size)
 
     // Match incoming requests by host
@@ -460,8 +461,9 @@ private[yarn] class YarnAllocator(
         internalReleaseContainer(container)
       }
     }
+    */
 
-    runAllocatedContainers(containersToUse)
+    runAllocatedContainers(allocatedContainers)
 
     logInfo("Received %d containers from YARN, launching executors on %d of them."
       .format(allocatedContainers.size, containersToUse.size))
@@ -504,7 +506,7 @@ private[yarn] class YarnAllocator(
   /**
    * Launches executors in the allocated containers.
    */
-  private def runAllocatedContainers(containersToUse: ArrayBuffer[Container]): Unit = {
+  private def runAllocatedContainers(containersToUse: Seq[Container]): Unit = {
     for (container <- containersToUse) {
       executorIdCounter += 1
       val executorHostname = container.getNodeId.getHost
