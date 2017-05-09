@@ -20,15 +20,18 @@ package org.apache.spark
 import java.util.Collections
 import java.util.concurrent.TimeUnit
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.concurrent._
 import scala.concurrent.duration.Duration
 import scala.util.Try
-
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.api.java.JavaFutureAction
 import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.JobWaiter
 import org.apache.spark.util.ThreadUtils
+
+import scala.reflect.ClassTag
 
 
 /**
@@ -111,7 +114,7 @@ trait FutureAction[T] extends Future[T] {
  * count, collect, reduce.
  */
 @DeveloperApi
-class SimpleFutureAction[T] private[spark](jobWaiter: JobWaiter[_], resultFunc: => T)
+class SimpleFutureAction[T: ClassTag] private[spark](jobWaiter: JobWaiter[_], resultFunc: => T)
   extends FutureAction[T] {
 
   @volatile private var _cancelled: Boolean = false
@@ -159,9 +162,9 @@ trait JobSubmitter {
    * This is a wrapper around the same functionality provided by SparkContext
    * to enable cancellation.
    */
-  def submitJob[T, U, R](
+  def submitJob[T: ClassTag, U: ClassTag, R: ClassTag](
     rdd: RDD[T],
-    processPartition: Iterator[T] => U,
+    processPartition: Iterator[Wrapper[T]] => U,
     partitions: Seq[Int],
     resultHandler: (Int, U) => Unit,
     resultFunc: => R): FutureAction[R]
@@ -174,7 +177,7 @@ trait JobSubmitter {
  * jobs.
  */
 @DeveloperApi
-class ComplexFutureAction[T](run : JobSubmitter => Future[T])
+class ComplexFutureAction[T: ClassTag](run : JobSubmitter => Future[T])
   extends FutureAction[T] { self =>
 
   @volatile private var _cancelled = false
@@ -191,9 +194,9 @@ class ComplexFutureAction[T](run : JobSubmitter => Future[T])
   }
 
   private def jobSubmitter = new JobSubmitter {
-    def submitJob[T, U, R](
+    def submitJob[T: ClassTag, U: ClassTag, R: ClassTag](
       rdd: RDD[T],
-      processPartition: Iterator[T] => U,
+      processPartition: Iterator[Wrapper[T]] => U,
       partitions: Seq[Int],
       resultHandler: (Int, U) => Unit,
       resultFunc: => R): FutureAction[R] = self.synchronized {
@@ -228,7 +231,8 @@ class ComplexFutureAction[T](run : JobSubmitter => Future[T])
     p.future.result(atMost)(permit)
   }
 
-  override def onComplete[U](func: (Try[T]) => U)(implicit executor: ExecutionContext): Unit = {
+  override def onComplete[U](func: (Try[T]) => U)(
+    implicit executor: ExecutionContext): Unit = {
     p.future.onComplete(func)(executor)
   }
 

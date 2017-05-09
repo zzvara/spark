@@ -17,9 +17,10 @@
 
 package org.apache.spark.sql.catalyst.analysis
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.annotation.tailrec
 import scala.collection.mutable.ArrayBuffer
-
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst._
 import org.apache.spark.sql.catalyst.catalog._
@@ -487,7 +488,8 @@ class Analyzer(
       case Pivot(groupByExprs, pivotColumn, pivotValues, aggregates, child) =>
         val singleAgg = aggregates.size == 1
         def outputName(value: Literal, aggregate: Expression): String = {
-          val utf8Value = Cast(value, StringType, Some(conf.sessionLocalTimeZone)).eval(EmptyRow)
+          val utf8Value = Cast(value, StringType, Some(conf.sessionLocalTimeZone))
+            .eval(Wrapper(EmptyRow))
           val stringValue: String = Option(utf8Value).map(_.toString).getOrElse("null")
           if (singleAgg) {
             stringValue
@@ -509,7 +511,8 @@ class Analyzer(
           }
           val bigGroup = groupByExprs :+ namedPivotCol
           val firstAgg = Aggregate(bigGroup, bigGroup ++ namedAggExps, child)
-          val castPivotValues = pivotValues.map(Cast(_, pivotColumn.dataType).eval(EmptyRow))
+          val castPivotValues = pivotValues.map(Cast(_, pivotColumn.dataType)
+            .eval(Wrapper(EmptyRow)))
           val pivotAggs = namedAggExps.map { a =>
             Alias(PivotFirst(namedPivotCol.toAttribute, a.toAttribute, castPivotValues)
               .toAggregateExpression()

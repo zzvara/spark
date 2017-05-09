@@ -17,9 +17,10 @@
 
 package org.apache.spark.sql.execution.window
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
@@ -204,7 +205,7 @@ case class WindowExec(
         val factory = key match {
           // Offset Frame
           case ("OFFSET", RowFrame, Some(offset), Some(h)) if offset == h =>
-            target: InternalRow =>
+            target: Wrapper[InternalRow] =>
               new OffsetWindowFunctionFrame(
                 target,
                 ordinal,
@@ -217,7 +218,7 @@ case class WindowExec(
 
           // Growing Frame.
           case ("AGGREGATE", frameType, None, Some(high)) =>
-            target: InternalRow => {
+            target: Wrapper[InternalRow] => {
               new UnboundedPrecedingWindowFunctionFrame(
                 target,
                 processor,
@@ -286,21 +287,21 @@ case class WindowExec(
 
     // Start processing.
     child.execute().mapPartitions { stream =>
-      new Iterator[InternalRow] {
+      new Iterator[Wrapper[InternalRow]] {
 
         // Get all relevant projections.
         val result = createResultProjection(expressions)
         val grouping = UnsafeProjection.create(partitionSpec, child.output)
 
         // Manage the stream and the grouping.
-        var nextRow: UnsafeRow = null
-        var nextGroup: UnsafeRow = null
+        var nextRow: Wrapper[UnsafeRow] = null
+        var nextGroup: Wrapper[UnsafeRow] = null
         var nextRowAvailable: Boolean = false
         private[this] def fetchNextRow() {
           nextRowAvailable = stream.hasNext
           if (nextRowAvailable) {
-            nextRow = stream.next().asInstanceOf[UnsafeRow]
-            nextGroup = grouping(nextRow)
+            nextRow = stream.next().asInstanceOf[Wrapper[UnsafeRow]]
+            nextGroup = grouping(nextRow.asInstanceOf[Wrapper[InternalRow]])
           } else {
             nextRow = null
             nextGroup = null
@@ -321,7 +322,7 @@ case class WindowExec(
         private[this] def fetchNextPartition() {
           // Collect all the rows in the current partition.
           // Before we start to fetch new input rows, make a copy of nextGroup.
-          val currentGroup = nextGroup.copy()
+          val currentGroup = nextGroup.apply { _.copy() }
 
           // clear last partition
           buffer.clear()
@@ -340,7 +341,10 @@ case class WindowExec(
 
           // Setup iteration
           rowIndex = 0
-          bufferIterator = buffer.generateIterator()
+          /**
+            * @todo Fix.
+            */
+          // bufferIterator = buffer.generateIterator()
         }
 
         // Iteration
@@ -349,8 +353,8 @@ case class WindowExec(
         override final def hasNext: Boolean =
           (bufferIterator != null && bufferIterator.hasNext) || nextRowAvailable
 
-        val join = new JoinedRow
-        override final def next(): InternalRow = {
+        val join = Wrapper(new JoinedRow)
+        override final def next(): Wrapper[InternalRow] = {
           // Load the next partition if we need to.
           if ((bufferIterator == null || !bufferIterator.hasNext) && nextRowAvailable) {
             fetchNextPartition()
@@ -362,16 +366,19 @@ case class WindowExec(
             // Get the results for the window frames.
             var i = 0
             while (i < numFrames) {
-              frames(i).write(rowIndex, current)
+              /**
+                * @todo Fix.
+                */
+              // frames(i).write(rowIndex, current)
               i += 1
             }
 
             // 'Merge' the input row with the window function result
-            join(current, windowFunctionResult)
+            join.apply { _(current, windowFunctionResult) }
             rowIndex += 1
 
             // Return the projection.
-            result(join)
+            result(join.asInstanceOf[Wrapper[InternalRow]]).asInstanceOf[Wrapper[InternalRow]]
           } else {
             throw new NoSuchElementException
           }

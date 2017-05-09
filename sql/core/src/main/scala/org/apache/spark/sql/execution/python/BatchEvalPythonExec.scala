@@ -153,7 +153,7 @@ case class BatchEvalPythonExec(udfs: Seq[PythonUDF], output: Seq[Attribute], chi
       }
       val resultProj = UnsafeProjection.create(output, output)
       outputIterator.flatMap { pickedResult =>
-        val unpickledBatch = unpickle.loads(pickedResult)
+        val unpickledBatch = unpickle.loads(pickedResult.^())
         unpickledBatch.asInstanceOf[java.util.ArrayList[Any]].asScala
       }.map { result =>
         val row = if (udfs.length == 1) {

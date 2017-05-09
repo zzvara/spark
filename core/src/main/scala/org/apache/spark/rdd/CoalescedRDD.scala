@@ -19,11 +19,12 @@ package org.apache.spark.rdd
 
 import java.io.{IOException, ObjectOutputStream}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.language.existentials
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.util.Utils
 
@@ -95,7 +96,7 @@ private[spark] class CoalescedRDD[T: ClassTag](
     }
   }
 
-  override def compute(partition: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(partition: Partition, context: TaskContext): Iterator[Wrapper[T]] = {
     partition.asInstanceOf[CoalescedRDDPartition].parents.iterator.flatMap { parentPartition =>
       firstParent[T].iterator(parentPartition, context)
     }

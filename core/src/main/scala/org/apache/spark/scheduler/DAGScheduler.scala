@@ -22,6 +22,8 @@ import java.util.Properties
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.annotation.tailrec
 import scala.collection.Map
 import scala.collection.mutable.{HashMap, HashSet, Stack}
@@ -29,9 +31,7 @@ import scala.concurrent.duration._
 import scala.language.existentials
 import scala.language.postfixOps
 import scala.util.control.NonFatal
-
 import org.apache.commons.lang3.SerializationUtils
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.executor.TaskMetrics
@@ -43,6 +43,8 @@ import org.apache.spark.rpc.RpcTimeout
 import org.apache.spark.storage._
 import org.apache.spark.storage.BlockManagerMessages.BlockManagerHeartbeat
 import org.apache.spark.util._
+
+import scala.reflect.ClassTag
 
 /**
  * The high-level scheduling layer that implements stage-oriented scheduling. It computes a DAG of
@@ -360,7 +362,7 @@ class DAGScheduler(
    */
   private def createResultStage(
       rdd: RDD[_],
-      func: (TaskContext, Iterator[_]) => _,
+      func: (TaskContext, Iterator[Wrapper[_]]) => _,
       partitions: Array[Int],
       jobId: Int,
       callSite: CallSite): ResultStage = {
@@ -565,13 +567,13 @@ class DAGScheduler(
    *
    * @throws IllegalArgumentException when partitions ids are illegal
    */
-  def submitJob[T, U](
-      rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
-      partitions: Seq[Int],
-      callSite: CallSite,
-      resultHandler: (Int, U) => Unit,
-      properties: Properties): JobWaiter[U] = {
+  def submitJob[T: ClassTag, U: ClassTag](
+    rdd: RDD[T],
+    func: (TaskContext, Iterator[Wrapper[T]]) => U,
+    partitions: Seq[Int],
+    callSite: CallSite,
+    resultHandler: (Int, U) => Unit,
+    properties: Properties): JobWaiter[U] = {
     // Check to make sure we are not launching a task on a partition that does not exist.
     val maxPartitions = rdd.partitions.length
     partitions.find(p => p >= maxPartitions || p < 0).foreach { p =>
@@ -609,9 +611,9 @@ class DAGScheduler(
    *
    * @note Throws `Exception` when the job fails
    */
-  def runJob[T, U](
+  def runJob[T: ClassTag, U: ClassTag](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[Wrapper[T]]) => U,
       partitions: Seq[Int],
       callSite: CallSite,
       resultHandler: (Int, U) => Unit,
@@ -649,15 +651,15 @@ class DAGScheduler(
    * @param timeout maximum time to wait for the job, in milliseconds
    * @param properties scheduler properties to attach to this job, e.g. fair scheduler pool name
    */
-  def runApproximateJob[T, U, R](
+  def runApproximateJob[T: ClassTag, U: ClassTag, R: ClassTag](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[Wrapper[T]]) => U,
       evaluator: ApproximateEvaluator[U, R],
       callSite: CallSite,
       timeout: Long,
       properties: Properties): PartialResult[R] = {
     val listener = new ApproximateActionListener(rdd, func, evaluator, timeout)
-    val func2 = func.asInstanceOf[(TaskContext, Iterator[_]) => _]
+    val func2 = func.asInstanceOf[(TaskContext, Iterator[Wrapper[_]]) => _]
     val partitions = (0 until rdd.partitions.length).toArray
     val jobId = nextJobId.getAndIncrement()
     eventProcessLoop.post(JobSubmitted(
@@ -843,7 +845,7 @@ class DAGScheduler(
 
   private[scheduler] def handleJobSubmitted(jobId: Int,
       finalRDD: RDD[_],
-      func: (TaskContext, Iterator[_]) => _,
+      func: (TaskContext, Iterator[Wrapper[_]]) => _,
       partitions: Array[Int],
       callSite: CallSite,
       listener: JobListener,

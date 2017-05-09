@@ -17,8 +17,9 @@
 
 package org.apache.spark.sql.execution.streaming.state
 
-import scala.reflect.ClassTag
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
 import org.apache.spark.{Partition, TaskContext}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.internal.SessionState
@@ -32,7 +33,7 @@ import org.apache.spark.util.SerializableConfiguration
  */
 class StateStoreRDD[T: ClassTag, U: ClassTag](
     dataRDD: RDD[T],
-    storeUpdateFunction: (StateStore, Iterator[T]) => Iterator[U],
+    storeUpdateFunction: (StateStore, Iterator[Wrapper[T]]) => Iterator[Wrapper[U]],
     checkpointLocation: String,
     operatorId: Long,
     storeVersion: Long,
@@ -55,7 +56,7 @@ class StateStoreRDD[T: ClassTag, U: ClassTag](
     storeCoordinator.flatMap(_.getLocation(storeId)).toSeq
   }
 
-  override def compute(partition: Partition, ctxt: TaskContext): Iterator[U] = {
+  override def compute(partition: Partition, ctxt: TaskContext): Iterator[Wrapper[U]] = {
     var store: StateStore = null
     val storeId = StateStoreId(checkpointLocation, operatorId, partition.index)
     store = StateStore.get(

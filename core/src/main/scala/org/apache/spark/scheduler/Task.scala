@@ -27,6 +27,8 @@ import org.apache.spark.memory.{MemoryMode, TaskMemoryManager}
 import org.apache.spark.metrics.MetricsSystem
 import org.apache.spark.util._
 
+import scala.reflect.ClassTag
+
 /**
  * A unit of execution. We have two kinds of Task's in Spark:
  *
@@ -50,7 +52,7 @@ import org.apache.spark.util._
  * @param appId id of the app this task belongs to
  * @param appAttemptId attempt id of the app this task belongs to
  */
-private[spark] abstract class Task[T](
+private[spark] abstract class Task[T: ClassTag](
     val stageId: Int,
     val stageAttemptId: Int,
     val partitionId: Int,
@@ -63,7 +65,8 @@ private[spark] abstract class Task[T](
     val appAttemptId: Option[String] = None) extends Serializable {
 
   @transient lazy val metrics: TaskMetrics =
-    SparkEnv.get.closureSerializer.newInstance().deserialize(ByteBuffer.wrap(serializedTaskMetrics))
+    SparkEnv.get.closureSerializer.newInstance()
+      .deserialize[TaskMetrics](ByteBuffer.wrap(serializedTaskMetrics))
 
   /**
    * Called by [[org.apache.spark.executor.Executor]] to run this task.

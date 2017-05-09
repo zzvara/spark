@@ -20,11 +20,11 @@ package org.apache.spark.rdd
 import java.io.{FileNotFoundException, IOException}
 import java.util.concurrent.TimeUnit
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
-
 import org.apache.hadoop.fs.Path
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
@@ -95,7 +95,7 @@ private[spark] class ReliableCheckpointRDD[T: ClassTag](
   /**
    * Read the content of the checkpoint file associated with the given partition.
    */
-  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[Wrapper[T]] = {
     val file = new Path(checkpointPath, ReliableCheckpointRDD.checkpointFileName(split.index))
     ReliableCheckpointRDD.readCheckpointFile(file, broadcastedConf, context)
   }
@@ -138,7 +138,7 @@ private[spark] object ReliableCheckpointRDD extends Logging {
       new SerializableConfiguration(sc.hadoopConfiguration))
     // TODO: This is expensive because it computes the RDD again unnecessarily (SPARK-8582)
     sc.runJob(originalRDD,
-      writePartitionToCheckpointFile[T](checkpointDirPath.toString, broadcastedConf) _)
+      writePartitionToCheckpointFile[Wrapper[T]](checkpointDirPath.toString, broadcastedConf) _)
 
     if (originalRDD.partitioner.nonEmpty) {
       writePartitionerToCheckpointDir(sc, originalRDD.partitioner.get, checkpointDirPath)

@@ -19,6 +19,7 @@ package org.apache.spark.sql.execution.window
 
 import java.util
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate.NoOp
@@ -41,11 +42,11 @@ private[window] abstract class WindowFunctionFrame {
   /**
    * Write the current results to the target row.
    */
-  def write(index: Int, current: InternalRow): Unit
+  def write(index: Int, current: Wrapper[InternalRow]): Unit
 }
 
 object WindowFunctionFrame {
-  def getNextOrNull(iterator: Iterator[UnsafeRow]): UnsafeRow = {
+  def getNextOrNull(iterator: Iterator[Wrapper[UnsafeRow]]): Wrapper[UnsafeRow] = {
     if (iterator.hasNext) iterator.next() else null
   }
 }
@@ -63,7 +64,7 @@ object WindowFunctionFrame {
  * @param offset by which rows get moved within a partition.
  */
 private[window] final class OffsetWindowFunctionFrame(
-    target: InternalRow,
+    target: Wrapper[InternalRow],
     ordinal: Int,
     expressions: Array[OffsetWindowFunction],
     inputSchema: Seq[Attribute],
@@ -77,7 +78,7 @@ private[window] final class OffsetWindowFunctionFrame(
   /**
    * An iterator over the [[input]]
    */
-  private[this] var inputIterator: Iterator[UnsafeRow] = _
+  private[this] var inputIterator: Iterator[Wrapper[UnsafeRow]] = _
 
   /** Index of the input row currently used for output. */
   private[this] var inputIndex = 0
@@ -127,9 +128,9 @@ private[window] final class OffsetWindowFunctionFrame(
     inputIndex = offset
   }
 
-  override def write(index: Int, current: InternalRow): Unit = {
+  override def write(index: Int, current: Wrapper[InternalRow]): Unit = {
     if (inputIndex >= 0 && inputIndex < input.length) {
-      val r = WindowFunctionFrame.getNextOrNull(inputIterator)
+      val r = WindowFunctionFrame.getNextOrNull(inputIterator).asInstanceOf[Wrapper[InternalRow]]
       projection(r)
     } else {
       // Use default values since the offset row does not exist.
@@ -161,13 +162,13 @@ private[window] final class SlidingWindowFunctionFrame(
   /**
    * An iterator over the [[input]]
    */
-  private[this] var inputIterator: Iterator[UnsafeRow] = _
+  private[this] var inputIterator: Iterator[Wrapper[UnsafeRow]] = _
 
   /** The next row from `input`. */
-  private[this] var nextRow: InternalRow = null
+  private[this] var nextRow: Wrapper[InternalRow] = null
 
   /** The rows within current sliding window. */
-  private[this] val buffer = new util.ArrayDeque[InternalRow]()
+  private[this] val buffer = new util.ArrayDeque[Wrapper[InternalRow]]()
 
   /**
    * Index of the first input row with a value greater than the upper bound of the current
@@ -185,21 +186,21 @@ private[window] final class SlidingWindowFunctionFrame(
   override def prepare(rows: ExternalAppendOnlyUnsafeRowArray): Unit = {
     input = rows
     inputIterator = input.generateIterator()
-    nextRow = WindowFunctionFrame.getNextOrNull(inputIterator)
+    nextRow = WindowFunctionFrame.getNextOrNull(inputIterator).asInstanceOf[Wrapper[InternalRow]]
     inputHighIndex = 0
     inputLowIndex = 0
     buffer.clear()
   }
 
   /** Write the frame columns for the current row to the given target row. */
-  override def write(index: Int, current: InternalRow): Unit = {
+  override def write(index: Int, current: Wrapper[InternalRow]): Unit = {
     var bufferUpdated = index == 0
 
     // Add all rows to the buffer for which the input row value is equal to or less than
     // the output row upper bound.
     while (nextRow != null && ubound.compare(nextRow, inputHighIndex, current, index) <= 0) {
-      buffer.add(nextRow.copy())
-      nextRow = WindowFunctionFrame.getNextOrNull(inputIterator)
+      buffer.add(nextRow.apply { _.copy() })
+      nextRow = WindowFunctionFrame.getNextOrNull(inputIterator).asInstanceOf[Wrapper[InternalRow]]
       inputHighIndex += 1
       bufferUpdated = true
     }
@@ -219,7 +220,7 @@ private[window] final class SlidingWindowFunctionFrame(
       while (iter.hasNext) {
         processor.update(iter.next())
       }
-      processor.evaluate(target)
+      processor.evaluate(target.asInstanceOf[Wrapper[InternalRow]])
     }
   }
 }
@@ -246,15 +247,15 @@ private[window] final class UnboundedWindowFunctionFrame(
 
     val iterator = rows.generateIterator()
     while (iterator.hasNext) {
-      processor.update(iterator.next())
+      processor.update(iterator.next().asInstanceOf[Wrapper[InternalRow]])
     }
   }
 
   /** Write the frame columns for the current row to the given target row. */
-  override def write(index: Int, current: InternalRow): Unit = {
+  override def write(index: Int, current: Wrapper[InternalRow]): Unit = {
     // Unfortunately we cannot assume that evaluation is deterministic. So we need to re-evaluate
     // for each row.
-    processor.evaluate(target)
+    processor.evaluate(target.asInstanceOf[Wrapper[InternalRow]])
   }
 }
 
@@ -273,7 +274,7 @@ private[window] final class UnboundedWindowFunctionFrame(
  * @param ubound comparator used to identify the upper bound of an output row.
  */
 private[window] final class UnboundedPrecedingWindowFunctionFrame(
-    target: InternalRow,
+    target: Wrapper[InternalRow],
     processor: AggregateProcessor,
     ubound: BoundOrdering)
   extends WindowFunctionFrame {
@@ -284,10 +285,10 @@ private[window] final class UnboundedPrecedingWindowFunctionFrame(
   /**
    * An iterator over the [[input]]
    */
-  private[this] var inputIterator: Iterator[UnsafeRow] = _
+  private[this] var inputIterator: Iterator[Wrapper[UnsafeRow]] = _
 
   /** The next row from `input`. */
-  private[this] var nextRow: InternalRow = null
+  private[this] var nextRow: Wrapper[InternalRow] = null
 
   /**
    * Index of the first input row with a value greater than the upper bound of the current
@@ -301,21 +302,21 @@ private[window] final class UnboundedPrecedingWindowFunctionFrame(
     inputIndex = 0
     inputIterator = input.generateIterator()
     if (inputIterator.hasNext) {
-      nextRow = inputIterator.next()
+      nextRow = inputIterator.next().asInstanceOf[Wrapper[InternalRow]]
     }
 
     processor.initialize(input.length)
   }
 
   /** Write the frame columns for the current row to the given target row. */
-  override def write(index: Int, current: InternalRow): Unit = {
+  override def write(index: Int, current: Wrapper[InternalRow]): Unit = {
     var bufferUpdated = index == 0
 
     // Add all rows to the aggregates for which the input row value is equal to or less than
     // the output row upper bound.
     while (nextRow != null && ubound.compare(nextRow, inputIndex, current, index) <= 0) {
       processor.update(nextRow)
-      nextRow = WindowFunctionFrame.getNextOrNull(inputIterator)
+      nextRow = WindowFunctionFrame.getNextOrNull(inputIterator).asInstanceOf[Wrapper[InternalRow]]
       inputIndex += 1
       bufferUpdated = true
     }
@@ -365,18 +366,18 @@ private[window] final class UnboundedFollowingWindowFunctionFrame(
   }
 
   /** Write the frame columns for the current row to the given target row. */
-  override def write(index: Int, current: InternalRow): Unit = {
+  override def write(index: Int, current: Wrapper[InternalRow]): Unit = {
     var bufferUpdated = index == 0
 
     // Ignore all the rows from the buffer for which the input row value is smaller than
     // the output row lower bound.
     val iterator = input.generateIterator(startIndex = inputIndex)
 
-    var nextRow = WindowFunctionFrame.getNextOrNull(iterator)
+    var nextRow = WindowFunctionFrame.getNextOrNull(iterator).asInstanceOf[Wrapper[InternalRow]]
     while (nextRow != null && lbound.compare(nextRow, inputIndex, current, index) < 0) {
       inputIndex += 1
       bufferUpdated = true
-      nextRow = WindowFunctionFrame.getNextOrNull(iterator)
+      nextRow = WindowFunctionFrame.getNextOrNull(iterator).asInstanceOf[Wrapper[InternalRow]]
     }
 
     // Only recalculate and update when the buffer changes.
@@ -386,9 +387,13 @@ private[window] final class UnboundedFollowingWindowFunctionFrame(
         processor.update(nextRow)
       }
       while (iterator.hasNext) {
-        processor.update(iterator.next())
+        processor.update(iterator.next().asInstanceOf[Wrapper[InternalRow]])
       }
-      processor.evaluate(target)
+
+      /**
+        * @todo Fix.
+        */
+      // processor.evaluate(target)
     }
   }
 }

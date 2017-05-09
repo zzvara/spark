@@ -20,15 +20,15 @@ package org.apache.spark.internal.io
 import java.text.SimpleDateFormat
 import java.util.{Date, Locale}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.reflect.ClassTag
 import scala.util.DynamicVariable
-
 import org.apache.hadoop.conf.{Configurable, Configuration}
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapred.{JobConf, JobID}
 import org.apache.hadoop.mapreduce._
 import org.apache.hadoop.mapreduce.task.TaskAttemptContextImpl
-
 import org.apache.spark.{SparkConf, SparkException, TaskContext}
 import org.apache.spark.deploy.SparkHadoopUtil
 import org.apache.spark.executor.OutputMetrics
@@ -85,7 +85,8 @@ object SparkHadoopMapReduceWriter extends Logging {
 
     // Try to write all RDD partitions as a Hadoop OutputFormat.
     try {
-      val ret = sparkContext.runJob(rdd, (context: TaskContext, iter: Iterator[(K, V)]) => {
+      val ret = sparkContext.runJob(rdd, (context: TaskContext,
+                                          iter: Iterator[Wrapper[(K, V)]]) => {
         executeTask(
           context = context,
           jobTrackerId = jobTrackerId,
@@ -118,7 +119,7 @@ object SparkHadoopMapReduceWriter extends Logging {
       committer: FileCommitProtocol,
       hadoopConf: Configuration,
       outputFormat: Class[_ <: OutputFormat[K, V]],
-      iterator: Iterator[(K, V)]): TaskCommitMessage = {
+      iterator: Iterator[Wrapper[(K, V)]]): TaskCommitMessage = {
     // Set up a task.
     val attemptId = new TaskAttemptID(jobTrackerId, sparkStageId, TaskType.REDUCE,
       sparkPartitionId, sparkAttemptNumber)
@@ -145,7 +146,7 @@ object SparkHadoopMapReduceWriter extends Logging {
         // Write rows out, release resource and commit the task.
         while (iterator.hasNext) {
           val pair = iterator.next()
-          writer.write(pair._1, pair._2)
+          writer.write(pair.^()._1, pair.^()._2)
 
           // Update bytes written metric every few records
           SparkHadoopWriterUtils.maybeUpdateOutputMetrics(outputMetrics, callback, recordsWritten)

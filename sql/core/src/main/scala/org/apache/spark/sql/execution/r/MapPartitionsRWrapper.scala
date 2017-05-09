@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.r
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.api.r._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql.api.r.SQLUtils._
@@ -56,10 +57,10 @@ case class MapPartitionsRWrapper(
       func, deserializer, serializer, packageNames, broadcastVars,
       isDataFrame = true, colNames = colNames, mode = RRunnerModes.DATAFRAME_DAPPLY)
     // Partition index is ignored. Dataset has no support for mapPartitionsWithIndex.
-    val outputIter = runner.compute(newIter, -1)
+    val outputIter = runner.compute(Wrapper ~ newIter, -1)
 
     if (serializer == SerializationFormats.ROW) {
-      outputIter.map { bytes => bytesToRow(bytes, outputSchema) }
+      outputIter.map { bytes => bytesToRow(bytes.^(), outputSchema) }
     } else {
       outputIter.map { bytes => Row.fromSeq(Seq(bytes)) }
     }

@@ -17,6 +17,7 @@
 
 package org.apache.spark.partial
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.scheduler.JobListener
@@ -32,7 +33,7 @@ import org.apache.spark.scheduler.JobListener
  */
 private[spark] class ApproximateActionListener[T, U, R](
     rdd: RDD[T],
-    func: (TaskContext, Iterator[T]) => U,
+    func: (TaskContext, Iterator[Wrapper[T]]) => U,
     evaluator: ApproximateEvaluator[U, R],
     timeout: Long)
   extends JobListener {

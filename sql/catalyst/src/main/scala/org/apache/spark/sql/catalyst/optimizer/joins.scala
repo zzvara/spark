@@ -17,8 +17,9 @@
 
 package org.apache.spark.sql.catalyst.optimizer
 
-import scala.annotation.tailrec
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.annotation.tailrec
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.planning.ExtractFiltersAndInnerJoins
 import org.apache.spark.sql.catalyst.plans._
@@ -121,11 +122,17 @@ case class EliminateOuterJoin(conf: SQLConf) extends Rule[LogicalPlan] with Pred
   private def canFilterOutNull(e: Expression): Boolean = {
     if (!e.deterministic || SubqueryExpression.hasCorrelatedSubquery(e)) return false
     val attributes = e.references.toSeq
-    val emptyRow = new GenericInternalRow(attributes.length)
+    val emptyRow = Wrapper(new GenericInternalRow(attributes.length))
     val boundE = BindReferences.bindReference(e, attributes)
     if (boundE.find(_.isInstanceOf[Unevaluable]).isDefined) return false
+    /**
+      * @todo Fix.
+      */
+      /*
     val v = boundE.eval(emptyRow)
     v == null || v == false
+    */
+    false
   }
 
   private def buildNewJoinType(filter: Filter, join: Join): JoinType = {

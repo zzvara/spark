@@ -22,6 +22,7 @@ import java.io.*;
 import java.nio.channels.FileChannel;
 import java.util.Iterator;
 
+import hu.sztaki.ilab.traceable.Wrapper;
 import scala.Option;
 import scala.Product2;
 import scala.collection.JavaConverters;
@@ -152,12 +153,12 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
    * This convenience method should only be called in test code.
    */
   @VisibleForTesting
-  public void write(Iterator<Product2<K, V>> records) throws IOException {
+  public void write(Iterator<Product2<K, Wrapper<V>>> records) throws IOException {
     write(JavaConverters.asScalaIteratorConverter(records).asScala());
   }
 
   @Override
-  public void write(scala.collection.Iterator<Product2<K, V>> records) throws IOException {
+  public void write(scala.collection.Iterator<Product2<K, Wrapper<V>>> records) throws IOException {
     // Keep track of success so we know if we encountered an exception
     // We do this rather than a standard try/catch/re-throw to handle
     // generic throwables.
@@ -231,7 +232,7 @@ public class UnsafeShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   }
 
   @VisibleForTesting
-  void insertRecordIntoSorter(Product2<K, V> record) throws IOException {
+  void insertRecordIntoSorter(Product2<K, Wrapper<V>> record) throws IOException {
     assert(sorter != null);
     final K key = record._1();
     final int partitionId = partitioner.getPartition(key);

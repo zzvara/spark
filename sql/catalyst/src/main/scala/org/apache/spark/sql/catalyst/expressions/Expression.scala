@@ -19,6 +19,7 @@ package org.apache.spark.sql.catalyst.expressions
 
 import java.util.Locale
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.analysis.TypeCheckResult
 import org.apache.spark.sql.catalyst.expressions.codegen._
@@ -86,7 +87,7 @@ abstract class Expression extends TreeNode[Expression] {
   def references: AttributeSet = AttributeSet(children.flatMap(_.references.iterator))
 
   /** Returns the result of evaluating this expression on a given input Row */
-  def eval(input: InternalRow = null): Any
+  def eval(input: Wrapper[InternalRow] = null): Any
 
   /**
    * Returns an [[ExprCode]], that contains the Java source code to generate the result of
@@ -219,7 +220,7 @@ abstract class Expression extends TreeNode[Expression] {
  */
 trait Unevaluable extends Expression {
 
-  final override def eval(input: InternalRow = null): Any =
+  final override def eval(input: Wrapper[InternalRow] = null): Any =
     throw new UnsupportedOperationException(s"Cannot evaluate expression: $this")
 
   final override protected def doGenCode(ctx: CodegenContext, ev: ExprCode): ExprCode =
@@ -283,13 +284,13 @@ trait Nondeterministic extends Expression {
    * Throws an exception if [[initialize()]] is not called yet.
    * Subclasses should override [[evalInternal()]].
    */
-  final override def eval(input: InternalRow = null): Any = {
+  final override def eval(input: Wrapper[InternalRow] = null): Any = {
     require(initialized,
       s"Nondeterministic expression ${this.getClass.getName} should be initialized before eval.")
     evalInternal(input)
   }
 
-  protected def evalInternal(input: InternalRow): Any
+  protected def evalInternal(input: Wrapper[InternalRow]): Any
 }
 
 
@@ -319,7 +320,7 @@ abstract class UnaryExpression extends Expression {
    * Default behavior of evaluation according to the default nullability of UnaryExpression.
    * If subclass of UnaryExpression override nullable, probably should also override this.
    */
-  override def eval(input: InternalRow): Any = {
+  override def eval(input: Wrapper[InternalRow]): Any = {
     val value = child.eval(input)
     if (value == null) {
       null
@@ -407,7 +408,7 @@ abstract class BinaryExpression extends Expression {
    * Default behavior of evaluation according to the default nullability of BinaryExpression.
    * If subclass of BinaryExpression override nullable, probably should also override this.
    */
-  override def eval(input: InternalRow): Any = {
+  override def eval(input: Wrapper[InternalRow]): Any = {
     val value1 = left.eval(input)
     if (value1 == null) {
       null
@@ -547,8 +548,12 @@ abstract class TernaryExpression extends Expression {
    * Default behavior of evaluation according to the default nullability of TernaryExpression.
    * If subclass of TernaryExpression override nullable, probably should also override this.
    */
-  override def eval(input: InternalRow): Any = {
+  override def eval(input: Wrapper[InternalRow]): Any = {
     val exprs = children
+    /**
+      * @todo Fix.
+      */
+    /*
     val value1 = exprs(0).eval(input)
     if (value1 != null) {
       val value2 = exprs(1).eval(input)
@@ -559,6 +564,7 @@ abstract class TernaryExpression extends Expression {
         }
       }
     }
+    */
     null
   }
 

@@ -17,12 +17,14 @@
 
 package org.apache.spark.shuffle
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 /**
  * Obtained inside a reduce task to read combined records from the mappers.
  */
 private[spark] trait ShuffleReader[K, C] {
   /** Read the combined key-values for this reduce task */
-  def read(): Iterator[Product2[K, C]]
+  def read(): Iterator[Product2[K, Wrapper[C]]]
 
   /**
    * Close this reader.

@@ -20,9 +20,10 @@ package org.apache.spark.api.r
 import java.io.File
 import java.util.{Map => JMap}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.api.java.{JavaPairRDD, JavaRDD, JavaSparkContext}
 import org.apache.spark.api.python.PythonRDD
@@ -41,7 +42,7 @@ private abstract class BaseRRDD[T: ClassTag, U: ClassTag](
   extends RDD[U](parent) with Logging {
   override def getPartitions: Array[Partition] = parent.partitions
 
-  override def compute(partition: Partition, context: TaskContext): Iterator[U] = {
+  override def compute(partition: Partition, context: TaskContext): Iterator[Wrapper[U]] = {
     val runner = new RRunner[U](
       func, deserializer, serializer, packageNames, broadcastVars, numPartitions)
 

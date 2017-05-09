@@ -17,8 +17,9 @@
 
 package org.apache.spark.rdd
 
-import scala.reflect.ClassTag
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
@@ -99,11 +100,15 @@ class ShuffledRDD[K: ClassTag, V: ClassTag, C: ClassTag](
     tracker.getPreferredLocationsForShuffle(dep, partition.index)
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(K, C)] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[Wrapper[(K, C)]] = {
     val dep = dependencies.head.asInstanceOf[ShuffleDependency[K, V, C]]
-    SparkEnv.get.shuffleManager.getReader(dep.shuffleHandle, split.index, split.index + 1, context)
+    Wrapper.toWrappedPairFromKeyed(
+      SparkEnv.get.shuffleManager.getReader[K, Wrapper[C]](
+        dep.shuffleHandle, split.index, split.index + 1, context
+      )
       .read()
-      .asInstanceOf[Iterator[(K, C)]]
+      .asInstanceOf[Iterator[Wrapper[(K, C)]]]
+      .asInstanceOf[Iterator[(K, Wrapper[C])]])
   }
 
   override def clearDependencies() {

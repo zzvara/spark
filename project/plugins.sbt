@@ -1,3 +1,4 @@
+
 addSbtPlugin("com.eed3si9n" % "sbt-assembly" % "0.11.2")
 
 addSbtPlugin("com.typesafe.sbteclipse" % "sbteclipse-plugin" % "5.0.1")
@@ -30,3 +31,5 @@ addSbtPlugin("com.simplytyped" % "sbt-antlr4" % "0.7.11")
 // the plugin; this is tracked at SPARK-14401.
 
 addSbtPlugin("org.spark-project" % "sbt-pom-reader" % "1.0.0-spark")
+
+libraryDependencies += "hu.sztaki.ilab" % "traceable_2.11" % "0.1.0-SNAPSHOT"

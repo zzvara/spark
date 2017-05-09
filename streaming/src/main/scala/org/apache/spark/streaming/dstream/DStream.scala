@@ -20,11 +20,12 @@ package org.apache.spark.streaming.dstream
 
 import java.io.{IOException, ObjectInputStream, ObjectOutputStream}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.mutable.HashMap
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
 import scala.util.matching.Regex
-
 import org.apache.spark.{SparkContext, SparkException}
 import org.apache.spark.internal.Logging
 import org.apache.spark.internal.io.SparkHadoopWriterUtils
@@ -432,7 +433,7 @@ abstract class DStream[T: ClassTag] (
     getOrCompute(time) match {
       case Some(rdd) =>
         val jobFunc = () => {
-          val emptyFunc = { (iterator: Iterator[T]) => {} }
+          val emptyFunc = { (iterator: Iterator[Wrapper[T]]) => {} }
           context.sparkContext.runJob(rdd, emptyFunc)
         }
         Some(new Job(time, jobFunc))

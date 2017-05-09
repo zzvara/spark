@@ -17,6 +17,7 @@
 
 package org.apache.spark
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.util.collection.ExternalAppendOnlyMap
 
@@ -30,13 +31,13 @@ import org.apache.spark.util.collection.ExternalAppendOnlyMap
  */
 @DeveloperApi
 case class Aggregator[K, V, C] (
-    createCombiner: V => C,
-    mergeValue: (C, V) => C,
-    mergeCombiners: (C, C) => C) {
+  createCombiner: Wrapper[V] => Wrapper[C],
+  mergeValue: (Wrapper[C], Wrapper[V]) => Wrapper[C],
+  mergeCombiners: (Wrapper[C], Wrapper[C]) => Wrapper[C]) {
 
   def combineValuesByKey(
-      iter: Iterator[_ <: Product2[K, V]],
-      context: TaskContext): Iterator[(K, C)] = {
+      iter: Iterator[_ <: Product2[K, Wrapper[V]]],
+      context: TaskContext): Iterator[(K, Wrapper[C])] = {
     val combiners = new ExternalAppendOnlyMap[K, V, C](createCombiner, mergeValue, mergeCombiners)
     combiners.insertAll(iter)
     updateMetrics(context, combiners)
@@ -44,8 +45,8 @@ case class Aggregator[K, V, C] (
   }
 
   def combineCombinersByKey(
-      iter: Iterator[_ <: Product2[K, C]],
-      context: TaskContext): Iterator[(K, C)] = {
+      iter: Iterator[_ <: Product2[K, Wrapper[C]]],
+      context: TaskContext): Iterator[(K, Wrapper[C])] = {
     val combiners = new ExternalAppendOnlyMap[K, C, C](identity, mergeCombiners, mergeCombiners)
     combiners.insertAll(iter)
     updateMetrics(context, combiners)

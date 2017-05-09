@@ -17,8 +17,9 @@
 
 package org.apache.spark.rdd
 
-import scala.reflect.ClassTag
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
 import org.apache.spark.{Partition, SparkContext, TaskContext}
 
 /**
@@ -41,7 +42,7 @@ private[spark] abstract class CheckpointRDD[T: ClassTag](sc: SparkContext)
   // base [[org.apache.spark.rdd.RDD]] class if we do not override the following methods.
   // scalastyle:off
   protected override def getPartitions: Array[Partition] = ???
-  override def compute(p: Partition, tc: TaskContext): Iterator[T] = ???
+  override def compute(p: Partition, tc: TaskContext): Iterator[Wrapper[T]] = ???
   // scalastyle:on
 
 }

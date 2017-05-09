@@ -17,9 +17,10 @@
 
 package org.apache.spark.api.java
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
 import org.apache.spark.api.java.function.{Function => JFunction}
@@ -29,6 +30,8 @@ import org.apache.spark.util.Utils
 
 class JavaRDD[T](val rdd: RDD[T])(implicit val classTag: ClassTag[T])
   extends AbstractJavaRDDLike[T, JavaRDD[T]] {
+
+  override val wrappedClassTag = implicitly[ClassTag[Wrapper[T]]]
 
   override def wrapRDD(rdd: RDD[T]): JavaRDD[T] = JavaRDD.fromRDD(rdd)
 

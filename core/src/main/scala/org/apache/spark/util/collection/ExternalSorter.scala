@@ -22,14 +22,15 @@ import java.util.Comparator
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-
 import com.google.common.io.ByteStreams
-
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark._
 import org.apache.spark.executor.ShuffleWriteMetrics
 import org.apache.spark.internal.Logging
 import org.apache.spark.serializer._
 import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
+
+import scala.reflect.ClassTag
 
 /**
  * Sorts and potentially merges a number of key-value pairs of type (K, V) to produce key-combiner
@@ -86,13 +87,13 @@ import org.apache.spark.storage.{BlockId, DiskBlockObjectWriter}
  *
  *  - Users are expected to call stop() at the end to delete all the intermediate files.
  */
-private[spark] class ExternalSorter[K, V, C](
+private[spark] class ExternalSorter[K: ClassTag, V: ClassTag, C: ClassTag](
     context: TaskContext,
     aggregator: Option[Aggregator[K, V, C]] = None,
     partitioner: Option[Partitioner] = None,
     ordering: Option[Ordering[K]] = None,
     serializer: Serializer = SparkEnv.get.serializer)
-  extends Spillable[WritablePartitionedPairCollection[K, C]](context.taskMemoryManager())
+  extends Spillable[WritablePartitionedPairCollection[K, Wrapper[C]]](context.taskMemoryManager())
   with Logging {
 
   private val conf = SparkEnv.get.conf
@@ -123,8 +124,8 @@ private[spark] class ExternalSorter[K, V, C](
   // Data structures to store in-memory objects before we spill. Depending on whether we have an
   // Aggregator set, we either put objects into an AppendOnlyMap where we combine them, or we
   // store them in an array buffer.
-  @volatile private var map = new PartitionedAppendOnlyMap[K, C]
-  @volatile private var buffer = new PartitionedPairBuffer[K, C]
+  @volatile private var map = new PartitionedAppendOnlyMap[K, Wrapper[C]]
+  @volatile private var buffer = new PartitionedPairBuffer[K, Wrapper[C]]
 
   // Total spilling statistics
   private var _diskBytesSpilled = 0L
@@ -176,7 +177,7 @@ private[spark] class ExternalSorter[K, V, C](
    */
   private[spark] def numSpills: Int = spills.size
 
-  def insertAll(records: Iterator[Product2[K, V]]): Unit = {
+  def insertAll(records: Iterator[Product2[K, Wrapper[V]]]): Unit = {
     // TODO: stop combining if we find that the reduction factor isn't high
     val shouldCombine = aggregator.isDefined
 
@@ -184,8 +185,8 @@ private[spark] class ExternalSorter[K, V, C](
       // Combine values in-memory first using our AppendOnlyMap
       val mergeValue = aggregator.get.mergeValue
       val createCombiner = aggregator.get.createCombiner
-      var kv: Product2[K, V] = null
-      val update = (hadValue: Boolean, oldValue: C) => {
+      var kv: Product2[K, Wrapper[V]] = null
+      val update = (hadValue: Boolean, oldValue: Wrapper[C]) => {
         if (hadValue) mergeValue(oldValue, kv._2) else createCombiner(kv._2)
       }
       while (records.hasNext) {
@@ -199,7 +200,7 @@ private[spark] class ExternalSorter[K, V, C](
       while (records.hasNext) {
         addElementsRead()
         val kv = records.next()
-        buffer.insert(getPartition(kv._1), kv._1, kv._2.asInstanceOf[C])
+        buffer.insert(getPartition(kv._1), kv._1, kv._2.asInstanceOf[Wrapper[C]])
         maybeSpillCollection(usingMap = false)
       }
     }
@@ -215,12 +216,12 @@ private[spark] class ExternalSorter[K, V, C](
     if (usingMap) {
       estimatedSize = map.estimateSize()
       if (maybeSpill(map, estimatedSize)) {
-        map = new PartitionedAppendOnlyMap[K, C]
+        map = new PartitionedAppendOnlyMap[K, Wrapper[C]]
       }
     } else {
       estimatedSize = buffer.estimateSize()
       if (maybeSpill(buffer, estimatedSize)) {
-        buffer = new PartitionedPairBuffer[K, C]
+        buffer = new PartitionedPairBuffer[K, Wrapper[C]]
       }
     }
 
@@ -235,7 +236,8 @@ private[spark] class ExternalSorter[K, V, C](
    *
    * @param collection whichever collection we're using (map or buffer)
    */
-  override protected[this] def spill(collection: WritablePartitionedPairCollection[K, C]): Unit = {
+  override protected[this] def spill(
+    collection: WritablePartitionedPairCollection[K, Wrapper[C]]): Unit = {
     val inMemoryIterator = collection.destructiveSortedWritablePartitionedIterator(comparator)
     val spillFile = spillMemoryIteratorToDisk(inMemoryIterator)
     spills += spillFile
@@ -338,8 +340,8 @@ private[spark] class ExternalSorter[K, V, C](
    * in order (you can't "skip ahead" to one partition without reading the previous one).
    * Guaranteed to return a key-value pair for each partition, in order of partition ID.
    */
-  private def merge(spills: Seq[SpilledFile], inMemory: Iterator[((Int, K), C)])
-      : Iterator[(Int, Iterator[Product2[K, C]])] = {
+  private def merge(spills: Seq[SpilledFile], inMemory: Iterator[((Int, K), Wrapper[C])])
+      : Iterator[(Int, Iterator[Product2[K, Wrapper[C]]])] = {
     val readers = spills.map(new SpillReader(_))
     val inMemBuffered = inMemory.buffered
     (0 until numPartitions).iterator.map { p =>
@@ -362,20 +364,21 @@ private[spark] class ExternalSorter[K, V, C](
   /**
    * Merge-sort a sequence of (K, C) iterators using a given a comparator for the keys.
    */
-  private def mergeSort(iterators: Seq[Iterator[Product2[K, C]]], comparator: Comparator[K])
-      : Iterator[Product2[K, C]] =
+  private def mergeSort(
+    iterators: Seq[Iterator[Product2[K, Wrapper[C]]]], comparator: Comparator[K])
+      : Iterator[Product2[K, Wrapper[C]]] =
   {
     val bufferedIters = iterators.filter(_.hasNext).map(_.buffered)
-    type Iter = BufferedIterator[Product2[K, C]]
+    type Iter = BufferedIterator[Product2[K, Wrapper[C]]]
     val heap = new mutable.PriorityQueue[Iter]()(new Ordering[Iter] {
       // Use the reverse of comparator.compare because PriorityQueue dequeues the max
       override def compare(x: Iter, y: Iter): Int = -comparator.compare(x.head._1, y.head._1)
     })
     heap.enqueue(bufferedIters: _*)  // Will contain only the iterators with hasNext = true
-    new Iterator[Product2[K, C]] {
+    new Iterator[Product2[K, Wrapper[C]]] {
       override def hasNext: Boolean = !heap.isEmpty
 
-      override def next(): Product2[K, C] = {
+      override def next(): Product2[K, Wrapper[C]] = {
         if (!hasNext) {
           throw new NoSuchElementException
         }
@@ -396,26 +399,26 @@ private[spark] class ExternalSorter[K, V, C](
    * they're not), we still merge them by doing equality tests for all keys that compare as equal.
    */
   private def mergeWithAggregation(
-      iterators: Seq[Iterator[Product2[K, C]]],
-      mergeCombiners: (C, C) => C,
+      iterators: Seq[Iterator[Product2[K, Wrapper[C]]]],
+      mergeCombiners: (Wrapper[C], Wrapper[C]) => Wrapper[C],
       comparator: Comparator[K],
       totalOrder: Boolean)
-      : Iterator[Product2[K, C]] =
+      : Iterator[Product2[K, Wrapper[C]]] =
   {
     if (!totalOrder) {
       // We only have a partial ordering, e.g. comparing the keys by hash code, which means that
       // multiple distinct keys might be treated as equal by the ordering. To deal with this, we
       // need to read all keys considered equal by the ordering at once and compare them.
-      new Iterator[Iterator[Product2[K, C]]] {
+      new Iterator[Iterator[Product2[K, Wrapper[C]]]] {
         val sorted = mergeSort(iterators, comparator).buffered
 
         // Buffers reused across elements to decrease memory allocation
         val keys = new ArrayBuffer[K]
-        val combiners = new ArrayBuffer[C]
+        val combiners = new ArrayBuffer[Wrapper[C]]
 
         override def hasNext: Boolean = sorted.hasNext
 
-        override def next(): Iterator[Product2[K, C]] = {
+        override def next(): Iterator[Product2[K, Wrapper[C]]] = {
           if (!hasNext) {
             throw new NoSuchElementException
           }
@@ -449,12 +452,12 @@ private[spark] class ExternalSorter[K, V, C](
       }.flatMap(i => i)
     } else {
       // We have a total ordering, so the objects with the same key are sequential.
-      new Iterator[Product2[K, C]] {
+      new Iterator[Product2[K, Wrapper[C]]] {
         val sorted = mergeSort(iterators, comparator).buffered
 
         override def hasNext: Boolean = sorted.hasNext
 
-        override def next(): Product2[K, C] = {
+        override def next(): Product2[K, Wrapper[C]] = {
           if (!hasNext) {
             throw new NoSuchElementException
           }
@@ -495,7 +498,7 @@ private[spark] class ExternalSorter[K, V, C](
     var fileStream: FileInputStream = null
     var deserializeStream = nextBatchStream()  // Also sets fileStream
 
-    var nextItem: (K, C) = null
+    var nextItem: (K, Wrapper[C]) = null
     var finished = false
 
     /** Construct a stream that only reads from the next batch */
@@ -550,12 +553,12 @@ private[spark] class ExternalSorter[K, V, C](
      * If the current batch is drained, construct a stream for the next batch and read from it.
      * If no more pairs are left, return null.
      */
-    private def readNextItem(): (K, C) = {
+    private def readNextItem(): (K, Wrapper[C]) = {
       if (finished || deserializeStream == null) {
         return null
       }
-      val k = deserializeStream.readKey().asInstanceOf[K]
-      val c = deserializeStream.readValue().asInstanceOf[C]
+      val k = deserializeStream.readKey[K]()
+      val c = deserializeStream.readValue[Wrapper[C]]()
       lastPartitionId = partitionId
       // Start reading the next batch if we're done with this one
       indexInBatch += 1
@@ -578,7 +581,8 @@ private[spark] class ExternalSorter[K, V, C](
 
     var nextPartitionToRead = 0
 
-    def readNextPartition(): Iterator[Product2[K, C]] = new Iterator[Product2[K, C]] {
+    def readNextPartition(): Iterator[Product2[K, Wrapper[C]]] =
+    new Iterator[Product2[K, Wrapper[C]]] {
       val myPartition = nextPartitionToRead
       nextPartitionToRead += 1
 
@@ -595,7 +599,7 @@ private[spark] class ExternalSorter[K, V, C](
         lastPartitionId == myPartition
       }
 
-      override def next(): Product2[K, C] = {
+      override def next(): Product2[K, Wrapper[C]] = {
         if (!hasNext) {
           throw new NoSuchElementException
         }
@@ -624,7 +628,8 @@ private[spark] class ExternalSorter[K, V, C](
    * If this iterator is forced spill to disk to release memory when there is not enough memory,
    * it returns pairs from an on-disk map.
    */
-  def destructiveIterator(memoryIterator: Iterator[((Int, K), C)]): Iterator[((Int, K), C)] = {
+  def destructiveIterator(
+    memoryIterator: Iterator[((Int, K), Wrapper[C])]): Iterator[((Int, K), Wrapper[C])] = {
     if (isShuffleSort) {
       memoryIterator
     } else {
@@ -644,9 +649,9 @@ private[spark] class ExternalSorter[K, V, C](
    * support hierarchical merging.
    * Exposed for testing.
    */
-  def partitionedIterator: Iterator[(Int, Iterator[Product2[K, C]])] = {
+  def partitionedIterator: Iterator[(Int, Iterator[Product2[K, Wrapper[C]]])] = {
     val usingMap = aggregator.isDefined
-    val collection: WritablePartitionedPairCollection[K, C] = if (usingMap) map else buffer
+    val collection: WritablePartitionedPairCollection[K, Wrapper[C]] = if (usingMap) map else buffer
     if (spills.isEmpty) {
       // Special case: if we have only in-memory data, we don't need to merge streams, and perhaps
       // we don't even need to sort by anything other than partition ID
@@ -668,7 +673,7 @@ private[spark] class ExternalSorter[K, V, C](
   /**
    * Return an iterator over all the data written to this object, aggregated by our aggregator.
    */
-  def iterator: Iterator[Product2[K, C]] = {
+  def iterator: Iterator[Product2[K, Wrapper[C]]] = {
     isShuffleSort = false
     partitionedIterator.flatMap(pair => pair._2)
   }
@@ -740,8 +745,8 @@ private[spark] class ExternalSorter[K, V, C](
    *
    * @param data an iterator of elements, assumed to already be sorted by partition ID
    */
-  private def groupByPartition(data: Iterator[((Int, K), C)])
-      : Iterator[(Int, Iterator[Product2[K, C]])] =
+  private def groupByPartition(data: Iterator[((Int, K), Wrapper[C])])
+      : Iterator[(Int, Iterator[Product2[K, Wrapper[C]]])] =
   {
     val buffered = data.buffered
     (0 until numPartitions).iterator.map(p => (p, new IteratorForPartition(p, buffered)))
@@ -752,12 +757,13 @@ private[spark] class ExternalSorter[K, V, C](
    * stream, assuming this partition is the next one to be read. Used to make it easier to return
    * partitioned iterators from our in-memory collection.
    */
-  private[this] class IteratorForPartition(partitionId: Int, data: BufferedIterator[((Int, K), C)])
-    extends Iterator[Product2[K, C]]
+  private[this] class IteratorForPartition(partitionId: Int,
+                                           data: BufferedIterator[((Int, K), Wrapper[C])])
+    extends Iterator[Product2[K, Wrapper[C]]]
   {
     override def hasNext: Boolean = data.hasNext && data.head._1._1 == partitionId
 
-    override def next(): Product2[K, C] = {
+    override def next(): Product2[K, Wrapper[C]] = {
       if (!hasNext) {
         throw new NoSuchElementException
       }
@@ -766,14 +772,14 @@ private[spark] class ExternalSorter[K, V, C](
     }
   }
 
-  private[this] class SpillableIterator(var upstream: Iterator[((Int, K), C)])
-    extends Iterator[((Int, K), C)] {
+  private[this] class SpillableIterator(var upstream: Iterator[((Int, K), Wrapper[C])])
+    extends Iterator[((Int, K), Wrapper[C])] {
 
     private val SPILL_LOCK = new Object()
 
-    private var nextUpstream: Iterator[((Int, K), C)] = null
+    private var nextUpstream: Iterator[((Int, K), Wrapper[C])] = null
 
-    private var cur: ((Int, K), C) = readNext()
+    private var cur: ((Int, K), Wrapper[C]) = readNext()
 
     private var hasSpilled: Boolean = false
 
@@ -807,7 +813,7 @@ private[spark] class ExternalSorter[K, V, C](
       }
     }
 
-    def readNext(): ((Int, K), C) = SPILL_LOCK.synchronized {
+    def readNext(): ((Int, K), Wrapper[C]) = SPILL_LOCK.synchronized {
       if (nextUpstream != null) {
         upstream = nextUpstream
         nextUpstream = null
@@ -821,7 +827,7 @@ private[spark] class ExternalSorter[K, V, C](
 
     override def hasNext(): Boolean = cur != null
 
-    override def next(): ((Int, K), C) = {
+    override def next(): ((Int, K), Wrapper[C]) = {
       val r = cur
       cur = readNext()
       r

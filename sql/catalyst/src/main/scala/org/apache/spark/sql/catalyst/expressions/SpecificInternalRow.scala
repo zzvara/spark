@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.catalyst.expressions
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.types._
 

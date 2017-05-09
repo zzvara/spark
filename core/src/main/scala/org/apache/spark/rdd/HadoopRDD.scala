@@ -21,15 +21,15 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.{Date, Locale}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.immutable.Map
 import scala.reflect.ClassTag
-
 import org.apache.hadoop.conf.{Configurable, Configuration}
 import org.apache.hadoop.mapred._
 import org.apache.hadoop.mapred.lib.CombineFileSplit
 import org.apache.hadoop.mapreduce.TaskType
 import org.apache.hadoop.util.ReflectionUtils
-
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.broadcast.Broadcast
@@ -199,8 +199,9 @@ class HadoopRDD[K, V](
     array
   }
 
-  override def compute(theSplit: Partition, context: TaskContext): InterruptibleIterator[(K, V)] = {
-    val iter = new NextIterator[(K, V)] {
+  override def compute(theSplit: Partition,
+                       context: TaskContext): InterruptibleIterator[Wrapper[(K, V)]] = {
+    val iter = new NextIterator[Wrapper[(K, V)]] {
 
       private val split = theSplit.asInstanceOf[HadoopPartition]
       logInfo("Input split: " + split.inputSplit)
@@ -255,7 +256,7 @@ class HadoopRDD[K, V](
       private val key: K = if (reader == null) null.asInstanceOf[K] else reader.createKey()
       private val value: V = if (reader == null) null.asInstanceOf[V] else reader.createValue()
 
-      override def getNext(): (K, V) = {
+      override def getNext(): Wrapper[(K, V)] = {
         try {
           finished = !reader.next(key, value)
         } catch {
@@ -269,7 +270,7 @@ class HadoopRDD[K, V](
         if (inputMetrics.recordsRead % SparkHadoopUtil.UPDATE_INPUT_METRICS_INTERVAL_RECORDS == 0) {
           updateBytesRead()
         }
-        (key, value)
+        Wrapper((key, value))
       }
 
       override def close(): Unit = {
@@ -301,7 +302,7 @@ class HadoopRDD[K, V](
         }
       }
     }
-    new InterruptibleIterator[(K, V)](context, iter)
+    new InterruptibleIterator[Wrapper[(K, V)]](context, iter)
   }
 
   /** Maps over a partition, providing the InputSplit that was used as the base of the partition. */
@@ -309,7 +310,15 @@ class HadoopRDD[K, V](
   def mapPartitionsWithInputSplit[U: ClassTag](
       f: (InputSplit, Iterator[(K, V)]) => Iterator[U],
       preservesPartitioning: Boolean = false): RDD[U] = {
-    new HadoopMapPartitionsWithSplitRDD(this, f, preservesPartitioning)
+    /**
+      * @todo Contune from here, fix F
+      */
+    new HadoopMapPartitionsWithSplitRDD(
+      this,
+      (split: InputSplit, iter: Iterator[Wrapper[(K, V)]]) =>
+      { f(split, iter map { _.^() }).map[Wrapper[U]] {
+          case x : U => Wrapper[U](x) } },
+      preservesPartitioning)
   }
 
   override def getPreferredLocations(split: Partition): Seq[String] = {
@@ -378,7 +387,7 @@ private[spark] object HadoopRDD extends Logging {
    */
   private[spark] class HadoopMapPartitionsWithSplitRDD[U: ClassTag, T: ClassTag](
       prev: RDD[T],
-      f: (InputSplit, Iterator[T]) => Iterator[U],
+      f: (InputSplit, Iterator[Wrapper[T]]) => Iterator[Wrapper[U]],
       preservesPartitioning: Boolean = false)
     extends RDD[U](prev) {
 
@@ -386,7 +395,7 @@ private[spark] object HadoopRDD extends Logging {
 
     override def getPartitions: Array[Partition] = firstParent[T].partitions
 
-    override def compute(split: Partition, context: TaskContext): Iterator[U] = {
+    override def compute(split: Partition, context: TaskContext): Iterator[Wrapper[U]] = {
       val partition = split.asInstanceOf[HadoopPartition]
       val inputSplit = partition.inputSplit.value
       f(inputSplit, firstParent[T].iterator(split, context))

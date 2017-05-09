@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.catalyst.expressions
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.codegen.{GenerateSafeProjection, GenerateUnsafeProjection}
 import org.apache.spark.sql.types.{DataType, StructType}
@@ -41,14 +42,14 @@ class InterpretedProjection(expressions: Seq[Expression]) extends Projection {
   // null check is required for when Kryo invokes the no-arg constructor.
   protected val exprArray = if (expressions != null) expressions.toArray else null
 
-  def apply(input: InternalRow): InternalRow = {
+  def apply(input: Wrapper[InternalRow]): Wrapper[InternalRow] = {
     val outputArray = new Array[Any](exprArray.length)
     var i = 0
     while (i < exprArray.length) {
       outputArray(i) = exprArray(i).eval(input)
       i += 1
     }
-    new GenericInternalRow(outputArray)
+    Wrapper(new GenericInternalRow(outputArray))
   }
 
   override def toString(): String = s"Row => [${exprArray.mkString(",")}]"
@@ -75,15 +76,16 @@ case class InterpretedMutableProjection(expressions: Seq[Expression]) extends Mu
   }
 
   private[this] val exprArray = expressions.toArray
-  private[this] var mutableRow: InternalRow = new GenericInternalRow(exprArray.length)
-  def currentValue: InternalRow = mutableRow
+  private[this] var mutableRow: Wrapper[InternalRow] =
+    Wrapper(new GenericInternalRow(exprArray.length))
+  def currentValue: Wrapper[InternalRow] = mutableRow
 
-  override def target(row: InternalRow): MutableProjection = {
+  override def target(row: Wrapper[InternalRow]): MutableProjection = {
     mutableRow = row
     this
   }
 
-  override def apply(input: InternalRow): InternalRow = {
+  override def apply(input: Wrapper[InternalRow]): Wrapper[InternalRow] = {
     var i = 0
     while (i < exprArray.length) {
       // Store the result into buffer first, to make the projection atomic (needed by aggregation)
@@ -92,7 +94,10 @@ case class InterpretedMutableProjection(expressions: Seq[Expression]) extends Mu
     }
     i = 0
     while (i < exprArray.length) {
-      mutableRow(i) = buffer(i)
+      /**
+        * @todo Fix.
+        */
+      // mutableRow.apply { _(i) = buffer(i) }
       i += 1
     }
     mutableRow
@@ -103,7 +108,7 @@ case class InterpretedMutableProjection(expressions: Seq[Expression]) extends Mu
  * A projection that returns UnsafeRow.
  */
 abstract class UnsafeProjection extends Projection {
-  override def apply(row: InternalRow): UnsafeRow
+  override def apply(row: Wrapper[InternalRow]): Wrapper[InternalRow]
 }
 
 object UnsafeProjection {

@@ -26,12 +26,13 @@ import java.io.PrintWriter
 import java.util.StringTokenizer
 import java.util.concurrent.atomic.AtomicReference
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.JavaConverters._
 import scala.collection.Map
 import scala.collection.mutable.ArrayBuffer
 import scala.io.Source
 import scala.reflect.ClassTag
-
 import org.apache.spark.{Partition, SparkEnv, TaskContext}
 import org.apache.spark.util.Utils
 
@@ -45,7 +46,7 @@ private[spark] class PipedRDD[T: ClassTag](
     command: Seq[String],
     envVars: Map[String, String],
     printPipeContext: (String => Unit) => Unit,
-    printRDDElement: (T, String => Unit) => Unit,
+    printRDDElement: (Wrapper[T], String => Unit) => Unit,
     separateWorkingDir: Boolean,
     bufferSize: Int,
     encoding: String)
@@ -63,7 +64,7 @@ private[spark] class PipedRDD[T: ClassTag](
     }
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[String] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[Wrapper[String]] = {
     val pb = new ProcessBuilder(command.asJava)
     // Add the environmental variables to the process.
     val currentEnvVars = pb.environment()
@@ -160,12 +161,12 @@ private[spark] class PipedRDD[T: ClassTag](
 
     // Return an iterator that read lines from the process's stdout
     val lines = Source.fromInputStream(proc.getInputStream)(encoding).getLines
-    new Iterator[String] {
-      def next(): String = {
+    new Iterator[Wrapper[String]] {
+      def next(): Wrapper[String] = {
         if (!hasNext()) {
           throw new NoSuchElementException()
         }
-        lines.next()
+        Wrapper(lines.next())
       }
 
       def hasNext(): Boolean = {

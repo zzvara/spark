@@ -20,25 +20,24 @@ package org.apache.spark.rdd
 import java.nio.ByteBuffer
 import java.util.{HashMap => JHashMap}
 
-import scala.collection.{mutable, Map}
+import scala.collection.{Map, mutable}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
+import scala.language.postfixOps
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.FileSystem
 import org.apache.hadoop.io.SequenceFile.CompressionType
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.hadoop.mapred.{FileOutputCommitter, FileOutputFormat, JobConf, OutputFormat}
 import org.apache.hadoop.mapreduce.{Job => NewAPIHadoopJob, OutputFormat => NewOutputFormat}
-
 import org.apache.spark._
 import org.apache.spark.Partitioner.defaultPartitioner
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.deploy.SparkHadoopUtil
-import org.apache.spark.internal.io.{SparkHadoopMapReduceWriter, SparkHadoopWriter,
-  SparkHadoopWriterUtils}
+import org.apache.spark.internal.io.{SparkHadoopMapReduceWriter, SparkHadoopWriter, SparkHadoopWriterUtils}
 import org.apache.spark.internal.Logging
 import org.apache.spark.partial.{BoundedDouble, PartialResult}
 import org.apache.spark.serializer.Serializer
@@ -87,16 +86,26 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
         throw new SparkException("HashPartitioner cannot partition array keys.")
       }
     }
-    val aggregator = new Aggregator[K, V, C](
-      self.context.clean(createCombiner),
-      self.context.clean(mergeValue),
-      self.context.clean(mergeCombiners))
     if (self.partitioner == Some(partitioner)) {
-      self.mapPartitions(iter => {
+      val aggregator = new Aggregator[K, V, C](
+        self.context.clean({ (x : Wrapper[V]) => x(createCombiner) }),
+        self.context.clean({ (x : Wrapper[C], y : Wrapper[V]) => x(y, mergeValue) }),
+        self.context.clean({ (x : Wrapper[C], y : Wrapper[C]) => x(y, mergeCombiners) }))
+      self.mapPartitions[(K, C)](iter => {
         val context = TaskContext.get()
-        new InterruptibleIterator(context, aggregator.combineValuesByKey(iter, context))
+        /**
+          * @todo This is not efficient!
+          */
+        Wrapper.toUnwrapped(Wrapper.toWrappedPairFromKeyed(
+          new InterruptibleIterator(context, aggregator.combineValuesByKey(
+          iter.map(pair => (pair._1, Wrapper(pair._2))), context)
+        )))
       }, preservesPartitioning = true)
     } else {
+      val aggregator = new Aggregator[K, V, C](
+        self.context.clean({ (x : Wrapper[V]) => x(createCombiner) }),
+        self.context.clean({ (x : Wrapper[C], y : Wrapper[V]) => x(y, mergeValue) }),
+        self.context.clean({ (x : Wrapper[C], y : Wrapper[C]) => x(y, mergeCombiners) }))
       new ShuffledRDD[K, V, C](self, partitioner)
         .setSerializer(serializer)
         .setAggregator(aggregator)
@@ -111,7 +120,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
    *
    * @see `combineByKeyWithClassTag`
    */
-  def combineByKey[C](
+  def combineByKey[C: ClassTag](
       createCombiner: V => C,
       mergeValue: (C, V) => C,
       mergeCombiners: (C, C) => C,
@@ -129,7 +138,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
    *
    * @see `combineByKeyWithClassTag`
    */
-  def combineByKey[C](
+  def combineByKey[C: ClassTag](
       createCombiner: V => C,
       mergeValue: (C, V) => C,
       mergeCombiners: (C, C) => C,
@@ -757,7 +766,11 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
   def mapValues[U](f: V => U): RDD[(K, U)] = self.withScope {
     val cleanF = self.context.clean(f)
     new MapPartitionsRDD[(K, U), (K, V)](self,
-      (context, pid, iter) => iter.map { case (k, v) => (k, cleanF(v)) },
+      (context, pid, iter: Iterator[Wrapper[(K, V)]]) =>
+        iter.map {
+          case x: Wrapper[(K, V)] =>
+            x((payload : (K, V)) => { (payload._1, cleanF(payload._2)) })
+        },
       preservesPartitioning = true)
   }
 
@@ -768,9 +781,10 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
   def flatMapValues[U](f: V => TraversableOnce[U]): RDD[(K, U)] = self.withScope {
     val cleanF = self.context.clean(f)
     new MapPartitionsRDD[(K, U), (K, V)](self,
-      (context, pid, iter) => iter.flatMap { case (k, v) =>
-        cleanF(v).map(x => (k, x))
-      },
+      (context, pid, iter: Iterator[Wrapper[(K, V)]]) =>
+        iter.flatMap[Wrapper[(K, U)]]{
+          case x : Wrapper[(K, V)] => cleanF((x^)._2) map { v => Wrapper(((x^)._1, v), x) }
+        },
       preservesPartitioning = true)
   }
 
@@ -938,13 +952,13 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
     self.partitioner match {
       case Some(p) =>
         val index = p.getPartition(key)
-        val process = (it: Iterator[(K, V)]) => {
+        val process = (it: Iterator[Wrapper[(K, V)]]) => {
           val buf = new ArrayBuffer[V]
-          for (pair <- it if pair._1 == key) {
-            buf += pair._2
-          }
-          buf
-        } : Seq[V]
+            for (pair <- it if (pair^)._1 == key) {
+              buf += (pair^)._2
+            }
+            buf
+          } : Seq[V]
         val res = self.context.runJob(self, process, Array(index))
         res(0)
       case None =>
@@ -1122,7 +1136,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
     val writer = new SparkHadoopWriter(hadoopConf)
     writer.preSetup()
 
-    val writeToFile = (context: TaskContext, iter: Iterator[(K, V)]) => {
+    val writeToFile = (context: TaskContext, iter: Iterator[Wrapper[(K, V)]]) => {
       // Hadoop wants a 32-bit task attempt ID, so if ours is bigger than Int.MaxValue, roll it
       // around by taking a mod. We expect that no task will be attempted 2 billion times.
       val taskAttemptId = (context.taskAttemptId % Int.MaxValue).toInt
@@ -1136,7 +1150,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
       Utils.tryWithSafeFinallyAndFailureCallbacks {
         while (iter.hasNext) {
           val record = iter.next()
-          writer.write(record._1.asInstanceOf[AnyRef], record._2.asInstanceOf[AnyRef])
+          writer.write((record^)._1.asInstanceOf[AnyRef], (record^)._2.asInstanceOf[AnyRef])
 
           // Update bytes written metric every few records
           SparkHadoopWriterUtils.maybeUpdateOutputMetrics(outputMetrics, callback, recordsWritten)

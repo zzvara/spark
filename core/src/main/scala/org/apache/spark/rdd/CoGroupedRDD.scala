@@ -19,10 +19,12 @@ package org.apache.spark.rdd
 
 import java.io.{IOException, ObjectOutputStream}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.mutable.ArrayBuffer
 import scala.language.existentials
 import scala.reflect.ClassTag
-
+import scala.language.postfixOps
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
@@ -128,12 +130,13 @@ class CoGroupedRDD[K: ClassTag](
 
   override val partitioner: Some[Partitioner] = Some(part)
 
-  override def compute(s: Partition, context: TaskContext): Iterator[(K, Array[Iterable[_]])] = {
+  override def compute(s: Partition,
+                       context: TaskContext): Iterator[Wrapper[(K, Array[Iterable[_]])]] = {
     val split = s.asInstanceOf[CoGroupPartition]
     val numRdds = dependencies.length
 
     // A list of (rdd iterator, dependency number) pairs
-    val rddIterators = new ArrayBuffer[(Iterator[Product2[K, Any]], Int)]
+    val rddIterators = new ArrayBuffer[(Iterator[Wrapper[Product2[K, Any]]], Int)]
     for ((dep, depNum) <- dependencies.zipWithIndex) dep match {
       case oneToOneDependency: OneToOneDependency[Product2[K, Any]] @unchecked =>
         val dependencyPartition = split.narrowDeps(depNum).get.split
@@ -143,41 +146,47 @@ class CoGroupedRDD[K: ClassTag](
 
       case shuffleDependency: ShuffleDependency[_, _, _] =>
         // Read map outputs of shuffle
-        val it = SparkEnv.get.shuffleManager
+        val it = Wrapper.toWrappedPairFromKeyed(SparkEnv.get.shuffleManager
           .getReader(shuffleDependency.shuffleHandle, split.index, split.index + 1, context)
-          .read()
+          .read().asInstanceOf[Iterator[(K, Wrapper[Any])]])
+          .asInstanceOf[Iterator[Wrapper[Product2[K, Any]]]]
         rddIterators += ((it, depNum))
     }
 
     val map = createExternalMap(numRdds)
     for ((it, depNum) <- rddIterators) {
-      map.insertAll(it.map(pair => (pair._1, new CoGroupValue(pair._2, depNum))))
+      map.insertAll(it.map(wrap => ((wrap^)._1,
+        Wrapper(new CoGroupValue((wrap^)._2, depNum), wrap))))
     }
     context.taskMetrics().incMemoryBytesSpilled(map.memoryBytesSpilled)
     context.taskMetrics().incDiskBytesSpilled(map.diskBytesSpilled)
     context.taskMetrics().incPeakExecutionMemory(map.peakMemoryUsedBytes)
     new InterruptibleIterator(context,
-      map.iterator.asInstanceOf[Iterator[(K, Array[Iterable[_]])]])
+      Wrapper.toWrappedPairFromKeyed(
+        map.iterator.asInstanceOf[Iterator[(K, Wrapper[Array[Iterable[_]]])]]
+      )
+    )
   }
 
   private def createExternalMap(numRdds: Int)
     : ExternalAppendOnlyMap[K, CoGroupValue, CoGroupCombiner] = {
 
-    val createCombiner: (CoGroupValue => CoGroupCombiner) = value => {
+    val createCombiner: (Wrapper[CoGroupValue] => Wrapper[CoGroupCombiner]) = value => {
       val newCombiner = Array.fill(numRdds)(new CoGroup)
-      newCombiner(value._2) += value._1
-      newCombiner
+      newCombiner((value^)._2) += (value^)._1
+      Wrapper(newCombiner, value)
     }
-    val mergeValue: (CoGroupCombiner, CoGroupValue) => CoGroupCombiner =
+    val mergeValue: (Wrapper[CoGroupCombiner], Wrapper[CoGroupValue]) => Wrapper[CoGroupCombiner] =
       (combiner, value) => {
-      combiner(value._2) += value._1
+      combiner.^()((value^)._2) += (value^)._1
       combiner
     }
-    val mergeCombiners: (CoGroupCombiner, CoGroupCombiner) => CoGroupCombiner =
+    val mergeCombiners: (Wrapper[CoGroupCombiner], Wrapper[CoGroupCombiner]) =>
+      Wrapper[CoGroupCombiner] =
       (combiner1, combiner2) => {
         var depNum = 0
         while (depNum < numRdds) {
-          combiner1(depNum) ++= combiner2(depNum)
+          combiner1.^()(depNum) ++= combiner2.^()(depNum)
           depNum += 1
         }
         combiner1

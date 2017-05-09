@@ -23,6 +23,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import javax.annotation.Nullable;
 
+import hu.sztaki.ilab.traceable.Wrapper;
 import scala.None$;
 import scala.Option;
 import scala.Product2;
@@ -120,7 +121,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
   }
 
   @Override
-  public void write(Iterator<Product2<K, V>> records) throws IOException {
+  public void write(Iterator<Product2<K, Wrapper<V>>> records) throws IOException {
     assert (partitionWriters == null);
     if (!records.hasNext()) {
       partitionLengths = new long[numPartitions];
@@ -146,7 +147,7 @@ final class BypassMergeSortShuffleWriter<K, V> extends ShuffleWriter<K, V> {
     writeMetrics.incWriteTime(System.nanoTime() - openStartTime);
 
     while (records.hasNext()) {
-      final Product2<K, V> record = records.next();
+      final Product2<K, Wrapper<V>> record = records.next();
       final K key = record._1();
       partitionWriters[partitioner.getPartition(key)].write(key, record._2());
     }

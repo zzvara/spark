@@ -17,16 +17,16 @@
 
 package org.apache.spark.streaming.kafka
 
-import scala.collection.mutable.ArrayBuffer
-import scala.reflect.{classTag, ClassTag}
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.collection.mutable.ArrayBuffer
+import scala.reflect.{ClassTag, classTag}
 import kafka.api.{FetchRequestBuilder, FetchResponse}
 import kafka.common.{ErrorMapping, TopicAndPartition}
 import kafka.consumer.SimpleConsumer
 import kafka.message.{MessageAndMetadata, MessageAndOffset}
 import kafka.serializer.Decoder
 import kafka.utils.VerifiableProperties
-
 import org.apache.spark.{Partition, SparkContext, SparkException, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.partial.{BoundedDouble, PartialResult}
@@ -98,9 +98,9 @@ class KafkaRDD[
     val buf = new ArrayBuffer[R]
     val res = context.runJob(
       this,
-      (tc: TaskContext, it: Iterator[R]) => it.take(parts(tc.partitionId)).toArray,
+      (tc: TaskContext, it: Iterator[Wrapper[R]]) => it.take(parts(tc.partitionId)).toArray,
       parts.keys.toArray)
-    res.foreach(buf ++= _)
+    res.foreach(r => buf ++= r.map(_.^()))
     buf.toArray
   }
 
@@ -125,16 +125,16 @@ class KafkaRDD[
     s"for topic ${part.topic} partition ${part.partition} start ${part.fromOffset}." +
     " This should not happen, and indicates a message may have been skipped"
 
-  override def compute(thePart: Partition, context: TaskContext): Iterator[R] = {
+  override def compute(thePart: Partition, context: TaskContext): Iterator[Wrapper[R]] = {
     val part = thePart.asInstanceOf[KafkaRDDPartition]
     assert(part.fromOffset <= part.untilOffset, errBeginAfterEnd(part))
-    if (part.fromOffset == part.untilOffset) {
+    Wrapper ~ (if (part.fromOffset == part.untilOffset) {
       logInfo(s"Beginning offset ${part.fromOffset} is the same as ending offset " +
         s"skipping ${part.topic} ${part.partition}")
       Iterator.empty
     } else {
       new KafkaRDDIterator(part, context)
-    }
+    })
   }
 
   /**

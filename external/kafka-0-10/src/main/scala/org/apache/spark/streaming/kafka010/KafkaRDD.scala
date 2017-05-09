@@ -17,13 +17,13 @@
 
 package org.apache.spark.streaming.kafka010
 
-import java.{ util => ju }
+import java.{util => ju}
+
+import hu.sztaki.ilab.traceable.Wrapper
 
 import scala.collection.mutable.ArrayBuffer
-
-import org.apache.kafka.clients.consumer.{ ConsumerConfig, ConsumerRecord }
+import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord}
 import org.apache.kafka.common.TopicPartition
-
 import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.partial.{BoundedDouble, PartialResult}
@@ -122,10 +122,10 @@ private[spark] class KafkaRDD[K, V](
     val buf = new ArrayBuffer[ConsumerRecord[K, V]]
     val res = context.runJob(
       this,
-      (tc: TaskContext, it: Iterator[ConsumerRecord[K, V]]) =>
+      (tc: TaskContext, it: Iterator[Wrapper[ConsumerRecord[K, V]]]) =>
       it.take(parts(tc.partitionId)).toArray, parts.keys.toArray
     )
-    res.foreach(buf ++= _)
+    res.foreach(r => buf ++= r.map(_.^()))
     buf.toArray
   }
 
@@ -170,16 +170,17 @@ private[spark] class KafkaRDD[K, V](
       s"for topic ${part.topic} partition ${part.partition}. " +
       "You either provided an invalid fromOffset, or the Kafka topic has been damaged"
 
-  override def compute(thePart: Partition, context: TaskContext): Iterator[ConsumerRecord[K, V]] = {
+  override def compute(thePart: Partition, context: TaskContext):
+  Iterator[Wrapper[ConsumerRecord[K, V]]] = {
     val part = thePart.asInstanceOf[KafkaRDDPartition]
     assert(part.fromOffset <= part.untilOffset, errBeginAfterEnd(part))
-    if (part.fromOffset == part.untilOffset) {
+    Wrapper ~ (if (part.fromOffset == part.untilOffset) {
       logInfo(s"Beginning offset ${part.fromOffset} is the same as ending offset " +
         s"skipping ${part.topic} ${part.partition}")
       Iterator.empty
     } else {
       new KafkaRDDIterator(part, context)
-    }
+    })
   }
 
   /**

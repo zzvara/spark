@@ -22,9 +22,12 @@ import java.lang.management.ManagementFactory
 import java.nio.ByteBuffer
 import java.util.Properties
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.rdd.RDD
+
+import scala.reflect.ClassTag
 
 /**
  * A task that sends back the output to the driver application.
@@ -49,7 +52,7 @@ import org.apache.spark.rdd.RDD
  * @param appId id of the app this task belongs to
  * @param appAttemptId attempt id of the app this task belongs to
   */
-private[spark] class ResultTask[T, U](
+private[spark] class ResultTask[T: ClassTag, U: ClassTag](
     stageId: Int,
     stageAttemptId: Int,
     taskBinary: Broadcast[Array[Byte]],
@@ -77,7 +80,7 @@ private[spark] class ResultTask[T, U](
       threadMXBean.getCurrentThreadCpuTime
     } else 0L
     val ser = SparkEnv.get.closureSerializer.newInstance()
-    val (rdd, func) = ser.deserialize[(RDD[T], (TaskContext, Iterator[T]) => U)](
+    val (rdd, func) = ser.deserialize[(RDD[T], (TaskContext, Iterator[Wrapper[T]]) => U)](
       ByteBuffer.wrap(taskBinary.value), Thread.currentThread.getContextClassLoader)
     _executorDeserializeTime = System.currentTimeMillis() - deserializeStartTime
     _executorDeserializeCpuTime = if (threadMXBean.isCurrentThreadCpuTimeSupported) {

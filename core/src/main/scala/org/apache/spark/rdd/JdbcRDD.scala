@@ -19,8 +19,9 @@ package org.apache.spark.rdd
 
 import java.sql.{Connection, ResultSet}
 
-import scala.reflect.ClassTag
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
 import org.apache.spark.{Partition, SparkContext, TaskContext}
 import org.apache.spark.api.java.{JavaRDD, JavaSparkContext}
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
@@ -62,7 +63,7 @@ class JdbcRDD[T: ClassTag](
     lowerBound: Long,
     upperBound: Long,
     numPartitions: Int,
-    mapRow: (ResultSet) => T = JdbcRDD.resultSetToObjectArray _)
+    mapRow: (ResultSet) => Wrapper[T] = JdbcRDD.resultSetToObjectArray _)
   extends RDD[T](sc, Nil) with Logging {
 
   override def getPartitions: Array[Partition] = {
@@ -75,8 +76,8 @@ class JdbcRDD[T: ClassTag](
     }.toArray
   }
 
-  override def compute(thePart: Partition, context: TaskContext): Iterator[T] = new NextIterator[T]
-  {
+  override def compute(thePart: Partition, context: TaskContext): Iterator[Wrapper[T]] =
+    new NextIterator[Wrapper[T]] {
     context.addTaskCompletionListener{ context => closeIfNeeded() }
     val part = thePart.asInstanceOf[JdbcPartition]
     val conn = getConnection()
@@ -100,12 +101,12 @@ class JdbcRDD[T: ClassTag](
     stmt.setLong(2, part.upper)
     val rs = stmt.executeQuery()
 
-    override def getNext(): T = {
+    override def getNext(): Wrapper[T] = {
       if (rs.next()) {
         mapRow(rs)
       } else {
         finished = true
-        null.asInstanceOf[T]
+        null.asInstanceOf[Wrapper[T]]
       }
     }
 
@@ -137,8 +138,9 @@ class JdbcRDD[T: ClassTag](
 }
 
 object JdbcRDD {
-  def resultSetToObjectArray(rs: ResultSet): Array[Object] = {
-    Array.tabulate[Object](rs.getMetaData.getColumnCount)(i => rs.getObject(i + 1))
+  def resultSetToObjectArray(rs: ResultSet): Wrapper[Array[Object]] = {
+    Wrapper(Array.tabulate[Object](rs.getMetaData.getColumnCount)(i =>
+      rs.getObject(i + 1)))
   }
 
   trait ConnectionFactory extends Serializable {
@@ -175,7 +177,7 @@ object JdbcRDD {
       lowerBound: Long,
       upperBound: Long,
       numPartitions: Int,
-      mapRow: JFunction[ResultSet, T]): JavaRDD[T] = {
+      mapRow: JFunction[ResultSet, Wrapper[T]]): JavaRDD[T] = {
 
     val jdbcRDD = new JdbcRDD[T](
       sc.sc,
@@ -216,8 +218,8 @@ object JdbcRDD {
       upperBound: Long,
       numPartitions: Int): JavaRDD[Array[Object]] = {
 
-    val mapRow = new JFunction[ResultSet, Array[Object]] {
-      override def call(resultSet: ResultSet): Array[Object] = {
+    val mapRow = new JFunction[ResultSet, Wrapper[Array[Object]]] {
+      override def call(resultSet: ResultSet): Wrapper[Array[Object]] = {
         resultSetToObjectArray(resultSet)
       }
     }

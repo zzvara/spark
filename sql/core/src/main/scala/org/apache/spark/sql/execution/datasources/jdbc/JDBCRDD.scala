@@ -19,10 +19,10 @@ package org.apache.spark.sql.execution.datasources.jdbc
 
 import java.sql.{Connection, Date, PreparedStatement, ResultSet, SQLException, Timestamp}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.util.control.NonFatal
-
 import org.apache.commons.lang3.StringUtils
-
 import org.apache.spark.{InterruptibleIterator, Partition, SparkContext, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
@@ -239,7 +239,8 @@ private[jdbc] class JDBCRDD(
    * Runs the SQL query against the JDBC driver.
    *
    */
-  override def compute(thePart: Partition, context: TaskContext): Iterator[InternalRow] = {
+  override def compute(thePart: Partition,
+                       context: TaskContext): Iterator[Wrapper[InternalRow]] = {
     var closed = false
     var rs: ResultSet = null
     var stmt: PreparedStatement = null
@@ -299,9 +300,10 @@ private[jdbc] class JDBCRDD(
         ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)
     stmt.setFetchSize(options.fetchSize)
     rs = stmt.executeQuery()
-    val rowsIterator = JdbcUtils.resultSetToSparkInternalRows(rs, schema, inputMetrics)
+    val rowsIterator = Wrapper ~ JdbcUtils.resultSetToSparkInternalRows(rs, schema, inputMetrics)
 
-    CompletionIterator[InternalRow, Iterator[InternalRow]](
+    CompletionIterator[InternalRow, Iterator[Wrapper[InternalRow]]](
       new InterruptibleIterator(context, rowsIterator), close())
+      .asInstanceOf[Iterator[Wrapper[InternalRow]]]
   }
 }

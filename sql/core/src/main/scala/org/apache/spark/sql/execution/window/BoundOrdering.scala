@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.window
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.Projection
 
@@ -25,7 +26,8 @@ import org.apache.spark.sql.catalyst.expressions.Projection
  * Function for comparing boundary values.
  */
 private[window] abstract class BoundOrdering {
-  def compare(inputRow: InternalRow, inputIndex: Int, outputRow: InternalRow, outputIndex: Int): Int
+  def compare(inputRow: Wrapper[InternalRow],
+              inputIndex: Int, outputRow: Wrapper[InternalRow], outputIndex: Int): Int
 }
 
 /**
@@ -33,9 +35,9 @@ private[window] abstract class BoundOrdering {
  */
 private[window] final case class RowBoundOrdering(offset: Int) extends BoundOrdering {
   override def compare(
-      inputRow: InternalRow,
+      inputRow: Wrapper[InternalRow],
       inputIndex: Int,
-      outputRow: InternalRow,
+      outputRow: Wrapper[InternalRow],
       outputIndex: Int): Int =
     inputIndex - (outputIndex + offset)
 }
@@ -50,9 +52,9 @@ private[window] final case class RangeBoundOrdering(
   extends BoundOrdering {
 
   override def compare(
-      inputRow: InternalRow,
+      inputRow: Wrapper[InternalRow],
       inputIndex: Int,
-      outputRow: InternalRow,
+      outputRow: Wrapper[InternalRow],
       outputIndex: Int): Int =
     ordering.compare(current(inputRow), bound(outputRow))
 }

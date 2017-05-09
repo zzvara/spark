@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.catalyst.expressions
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.SparkException
 import org.apache.spark.sql.catalyst.{CatalystTypeConverters, InternalRow}
 import org.apache.spark.sql.catalyst.expressions.codegen._
@@ -80,7 +81,7 @@ case class ScalaUDF(
   private[this] val f = children.size match {
     case 0 =>
       val func = function.asInstanceOf[() => Any]
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func()
       }
 
@@ -88,7 +89,7 @@ case class ScalaUDF(
       val func = function.asInstanceOf[(Any) => Any]
       val child0 = children(0)
       lazy val converter0 = CatalystTypeConverters.createToScalaConverter(child0.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)))
       }
@@ -99,7 +100,7 @@ case class ScalaUDF(
       val child1 = children(1)
       lazy val converter0 = CatalystTypeConverters.createToScalaConverter(child0.dataType)
       lazy val converter1 = CatalystTypeConverters.createToScalaConverter(child1.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)))
@@ -113,7 +114,7 @@ case class ScalaUDF(
       lazy val converter0 = CatalystTypeConverters.createToScalaConverter(child0.dataType)
       lazy val converter1 = CatalystTypeConverters.createToScalaConverter(child1.dataType)
       lazy val converter2 = CatalystTypeConverters.createToScalaConverter(child2.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -130,7 +131,7 @@ case class ScalaUDF(
       lazy val converter1 = CatalystTypeConverters.createToScalaConverter(child1.dataType)
       lazy val converter2 = CatalystTypeConverters.createToScalaConverter(child2.dataType)
       lazy val converter3 = CatalystTypeConverters.createToScalaConverter(child3.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -150,7 +151,7 @@ case class ScalaUDF(
       lazy val converter2 = CatalystTypeConverters.createToScalaConverter(child2.dataType)
       lazy val converter3 = CatalystTypeConverters.createToScalaConverter(child3.dataType)
       lazy val converter4 = CatalystTypeConverters.createToScalaConverter(child4.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -173,7 +174,7 @@ case class ScalaUDF(
       lazy val converter3 = CatalystTypeConverters.createToScalaConverter(child3.dataType)
       lazy val converter4 = CatalystTypeConverters.createToScalaConverter(child4.dataType)
       lazy val converter5 = CatalystTypeConverters.createToScalaConverter(child5.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -199,7 +200,7 @@ case class ScalaUDF(
       lazy val converter4 = CatalystTypeConverters.createToScalaConverter(child4.dataType)
       lazy val converter5 = CatalystTypeConverters.createToScalaConverter(child5.dataType)
       lazy val converter6 = CatalystTypeConverters.createToScalaConverter(child6.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -228,7 +229,7 @@ case class ScalaUDF(
       lazy val converter5 = CatalystTypeConverters.createToScalaConverter(child5.dataType)
       lazy val converter6 = CatalystTypeConverters.createToScalaConverter(child6.dataType)
       lazy val converter7 = CatalystTypeConverters.createToScalaConverter(child7.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -260,7 +261,7 @@ case class ScalaUDF(
       lazy val converter6 = CatalystTypeConverters.createToScalaConverter(child6.dataType)
       lazy val converter7 = CatalystTypeConverters.createToScalaConverter(child7.dataType)
       lazy val converter8 = CatalystTypeConverters.createToScalaConverter(child8.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -295,7 +296,7 @@ case class ScalaUDF(
       lazy val converter7 = CatalystTypeConverters.createToScalaConverter(child7.dataType)
       lazy val converter8 = CatalystTypeConverters.createToScalaConverter(child8.dataType)
       lazy val converter9 = CatalystTypeConverters.createToScalaConverter(child9.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -333,7 +334,7 @@ case class ScalaUDF(
       lazy val converter8 = CatalystTypeConverters.createToScalaConverter(child8.dataType)
       lazy val converter9 = CatalystTypeConverters.createToScalaConverter(child9.dataType)
       lazy val converter10 = CatalystTypeConverters.createToScalaConverter(child10.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -374,7 +375,7 @@ case class ScalaUDF(
       lazy val converter9 = CatalystTypeConverters.createToScalaConverter(child9.dataType)
       lazy val converter10 = CatalystTypeConverters.createToScalaConverter(child10.dataType)
       lazy val converter11 = CatalystTypeConverters.createToScalaConverter(child11.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -418,7 +419,7 @@ case class ScalaUDF(
       lazy val converter10 = CatalystTypeConverters.createToScalaConverter(child10.dataType)
       lazy val converter11 = CatalystTypeConverters.createToScalaConverter(child11.dataType)
       lazy val converter12 = CatalystTypeConverters.createToScalaConverter(child12.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -465,7 +466,7 @@ case class ScalaUDF(
       lazy val converter11 = CatalystTypeConverters.createToScalaConverter(child11.dataType)
       lazy val converter12 = CatalystTypeConverters.createToScalaConverter(child12.dataType)
       lazy val converter13 = CatalystTypeConverters.createToScalaConverter(child13.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -515,7 +516,7 @@ case class ScalaUDF(
       lazy val converter12 = CatalystTypeConverters.createToScalaConverter(child12.dataType)
       lazy val converter13 = CatalystTypeConverters.createToScalaConverter(child13.dataType)
       lazy val converter14 = CatalystTypeConverters.createToScalaConverter(child14.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -568,7 +569,7 @@ case class ScalaUDF(
       lazy val converter13 = CatalystTypeConverters.createToScalaConverter(child13.dataType)
       lazy val converter14 = CatalystTypeConverters.createToScalaConverter(child14.dataType)
       lazy val converter15 = CatalystTypeConverters.createToScalaConverter(child15.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -624,7 +625,7 @@ case class ScalaUDF(
       lazy val converter14 = CatalystTypeConverters.createToScalaConverter(child14.dataType)
       lazy val converter15 = CatalystTypeConverters.createToScalaConverter(child15.dataType)
       lazy val converter16 = CatalystTypeConverters.createToScalaConverter(child16.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -683,7 +684,7 @@ case class ScalaUDF(
       lazy val converter15 = CatalystTypeConverters.createToScalaConverter(child15.dataType)
       lazy val converter16 = CatalystTypeConverters.createToScalaConverter(child16.dataType)
       lazy val converter17 = CatalystTypeConverters.createToScalaConverter(child17.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -745,7 +746,7 @@ case class ScalaUDF(
       lazy val converter16 = CatalystTypeConverters.createToScalaConverter(child16.dataType)
       lazy val converter17 = CatalystTypeConverters.createToScalaConverter(child17.dataType)
       lazy val converter18 = CatalystTypeConverters.createToScalaConverter(child18.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -810,7 +811,7 @@ case class ScalaUDF(
       lazy val converter17 = CatalystTypeConverters.createToScalaConverter(child17.dataType)
       lazy val converter18 = CatalystTypeConverters.createToScalaConverter(child18.dataType)
       lazy val converter19 = CatalystTypeConverters.createToScalaConverter(child19.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -878,7 +879,7 @@ case class ScalaUDF(
       lazy val converter18 = CatalystTypeConverters.createToScalaConverter(child18.dataType)
       lazy val converter19 = CatalystTypeConverters.createToScalaConverter(child19.dataType)
       lazy val converter20 = CatalystTypeConverters.createToScalaConverter(child20.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -949,7 +950,7 @@ case class ScalaUDF(
       lazy val converter19 = CatalystTypeConverters.createToScalaConverter(child19.dataType)
       lazy val converter20 = CatalystTypeConverters.createToScalaConverter(child20.dataType)
       lazy val converter21 = CatalystTypeConverters.createToScalaConverter(child21.dataType)
-      (input: InternalRow) => {
+      (input: Wrapper[InternalRow]) => {
         func(
           converter0(child0.eval(input)),
           converter1(child1.eval(input)),
@@ -1067,7 +1068,7 @@ case class ScalaUDF(
     s"Failed to execute user defined function($funcCls: ($inputTypes) => ${dataType.simpleString})"
   }
 
-  override def eval(input: InternalRow): Any = {
+  override def eval(input: Wrapper[InternalRow]): Any = {
     val result = try {
       f(input)
     } catch {

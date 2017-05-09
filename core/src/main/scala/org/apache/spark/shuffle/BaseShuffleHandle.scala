@@ -19,10 +19,12 @@ package org.apache.spark.shuffle
 
 import org.apache.spark.ShuffleDependency
 
+import scala.reflect.ClassTag
+
 /**
  * A basic ShuffleHandle implementation that just captures registerShuffle's parameters.
  */
-private[spark] class BaseShuffleHandle[K, V, C](
+private[spark] class BaseShuffleHandle[K: ClassTag, V: ClassTag, C: ClassTag](
     shuffleId: Int,
     val numMaps: Int,
     val dependency: ShuffleDependency[K, V, C])

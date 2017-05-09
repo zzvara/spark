@@ -17,6 +17,7 @@
 
 package org.apache.spark.sql.execution.joins
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark._
 import org.apache.spark.rdd.{CartesianPartition, CartesianRDD, RDD}
 import org.apache.spark.sql.catalyst.InternalRow
@@ -38,20 +39,24 @@ class UnsafeCartesianRDD(
     spillThreshold: Int)
   extends CartesianRDD[UnsafeRow, UnsafeRow](left.sparkContext, left, right) {
 
-  override def compute(split: Partition, context: TaskContext): Iterator[(UnsafeRow, UnsafeRow)] = {
+  override def compute(split: Partition, context: TaskContext):
+    Iterator[Wrapper[(UnsafeRow, UnsafeRow)]] = {
     val rowArray = new ExternalAppendOnlyUnsafeRowArray(spillThreshold)
 
     val partition = split.asInstanceOf[CartesianPartition]
     rdd2.iterator(partition.s2, context).foreach(rowArray.add)
 
     // Create an iterator from rowArray
-    def createIter(): Iterator[UnsafeRow] = rowArray.generateIterator()
+    def createIter(): Iterator[Wrapper[UnsafeRow]] = rowArray.generateIterator()
 
     val resultIter =
       for (x <- rdd1.iterator(partition.s1, context);
            y <- createIter()) yield (x, y)
-    CompletionIterator[(UnsafeRow, UnsafeRow), Iterator[(UnsafeRow, UnsafeRow)]](
-      resultIter, rowArray.clear())
+    Wrapper.toWrappedPair(
+      CompletionIterator[(UnsafeRow, UnsafeRow),
+                         Iterator[(Wrapper[UnsafeRow], Wrapper[UnsafeRow])]](
+      resultIter, rowArray.clear()).asInstanceOf[Iterator[(Wrapper[UnsafeRow], Wrapper[UnsafeRow])]]
+    )
   }
 }
 

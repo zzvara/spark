@@ -17,9 +17,10 @@
 
 package org.apache.spark.sql.catalyst.encoders
 
-import scala.reflect.ClassTag
-import scala.reflect.runtime.universe.{typeTag, TypeTag}
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe.{TypeTag, typeTag}
 import org.apache.spark.sql.Encoder
 import org.apache.spark.sql.catalyst.{InternalRow, JavaTypeInference, ScalaReflection}
 import org.apache.spark.sql.catalyst.analysis.{Analyzer, GetColumnByOrdinal, SimpleAnalyzer, UnresolvedAttribute, UnresolvedExtractValue}
@@ -282,9 +283,9 @@ case class ExpressionEncoder[T](
    * toRow are allowed to return the same actual [[InternalRow]] object.  Thus, the caller should
    * copy the result before making another call if required.
    */
-  def toRow(t: T): InternalRow = try {
+  def toRow(t: T): Wrapper[InternalRow] = try {
     inputRow(0) = t
-    extractProjection(inputRow)
+    extractProjection(Wrapper(inputRow))
   } catch {
     case e: Exception =>
       throw new RuntimeException(
@@ -297,7 +298,10 @@ case class ExpressionEncoder[T](
    * function.
    */
   def fromRow(row: InternalRow): T = try {
-    constructProjection(row).get(0, ObjectType(clsTag.runtimeClass)).asInstanceOf[T]
+    /**
+      * @todo Fix.
+      */
+    constructProjection(Wrapper(row)).^().get(0, ObjectType(clsTag.runtimeClass)).asInstanceOf[T]
   } catch {
     case e: Exception =>
       throw new RuntimeException(s"Error while decoding: $e\n${deserializer.simpleString}", e)

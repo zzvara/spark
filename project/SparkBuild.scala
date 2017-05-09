@@ -52,9 +52,11 @@ object BuildCommons {
   val allProjects@Seq(
     core, graphx, mllib, mllibLocal, repl, networkCommon, networkShuffle, launcher, unsafe, tags, sketch, _*
   ) = Seq(
-    "core", "graphx", "mllib", "mllib-local", "repl", "network-common", "network-shuffle", "launcher", "unsafe",
+    // "core", "graphx", "mllib", "mllib-local", "repl", "network-common", "network-shuffle", "launcher", "unsafe",
+    "core", "network-common", "network-shuffle", "launcher", "unsafe",
     "tags", "sketch"
-  ).map(ProjectRef(buildLocation, _)) ++ sqlProjects ++ streamingProjects
+  // ).map(ProjectRef(buildLocation, _)) ++ sqlProjects ++ streamingProjects
+  ).map(ProjectRef(buildLocation, _)) ++ streamingProjects
 
   val optionallyEnabledProjects@Seq(mesos, yarn, sparkGangliaLgpl,
     streamingKinesisAsl, dockerIntegrationTests) =
@@ -343,13 +345,13 @@ object SparkBuild extends PomBuild {
   enable(Unidoc.settings)(spark)
 
   /* Catalyst ANTLR generation settings */
-  enable(Catalyst.settings)(catalyst)
+  // enable(Catalyst.settings)(catalyst)
 
   /* Spark SQL Core console settings */
-  enable(SQL.settings)(sql)
+  // enable(SQL.settings)(sql)
 
   /* Hive console settings */
-  enable(Hive.settings)(hive)
+  // enable(Hive.settings)(hive)
 
   enable(Flume.settings)(streamingFlumeSink)
 

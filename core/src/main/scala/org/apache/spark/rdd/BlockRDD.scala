@@ -17,8 +17,9 @@
 
 package org.apache.spark.rdd
 
-import scala.reflect.ClassTag
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
 import org.apache.spark._
 import org.apache.spark.storage.{BlockId, BlockManager}
 
@@ -40,12 +41,12 @@ class BlockRDD[T: ClassTag](sc: SparkContext, @transient val blockIds: Array[Blo
     }.toArray
   }
 
-  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[Wrapper[T]] = {
     assertValid()
     val blockManager = SparkEnv.get.blockManager
     val blockId = split.asInstanceOf[BlockRDDPartition].blockId
     blockManager.get[T](blockId) match {
-      case Some(block) => block.data.asInstanceOf[Iterator[T]]
+      case Some(block) => block.data.asInstanceOf[Iterator[Wrapper[T]]]
       case None =>
         throw new Exception(s"Could not compute split, block $blockId of RDD $id not found")
     }

@@ -17,8 +17,9 @@
 
 package org.apache.spark.graphx
 
-import scala.reflect.ClassTag
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
 import org.apache.spark._
 import org.apache.spark.graphx.impl.RoutingTablePartition
 import org.apache.spark.graphx.impl.ShippableVertexPartition
@@ -65,8 +66,8 @@ abstract class VertexRDD[VD](
   /**
    * Provides the `RDD[(VertexId, VD)]` equivalent output.
    */
-  override def compute(part: Partition, context: TaskContext): Iterator[(VertexId, VD)] = {
-    firstParent[ShippableVertexPartition[VD]].iterator(part, context).next().iterator
+  override def compute(part: Partition, context: TaskContext): Iterator[Wrapper[(VertexId, VD)]] = {
+    Wrapper ~ firstParent[ShippableVertexPartition[VD]].iterator(part, context).next().^().iterator
   }
 
   /**

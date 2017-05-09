@@ -21,20 +21,20 @@ import java.{lang => jl}
 import java.lang.{Iterable => JIterable}
 import java.util.{Comparator, List => JList}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.JavaConverters._
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.hadoop.mapred.{JobConf, OutputFormat}
 import org.apache.hadoop.mapreduce.{OutputFormat => NewOutputFormat}
-
 import org.apache.spark.{HashPartitioner, Partitioner}
 import org.apache.spark.Partitioner._
 import org.apache.spark.api.java.JavaSparkContext.fakeClassTag
 import org.apache.spark.api.java.JavaUtils.mapAsSerializableJavaMap
-import org.apache.spark.api.java.function.{Function => JFunction, Function2 => JFunction2, PairFunction}
+import org.apache.spark.api.java.function.{PairFunction, Function => JFunction, Function2 => JFunction2}
 import org.apache.spark.partial.{BoundedDouble, PartialResult}
 import org.apache.spark.rdd.{OrderedRDDFunctions, RDD}
 import org.apache.spark.rdd.RDD.rddToPairRDDFunctions
@@ -48,7 +48,8 @@ class JavaPairRDD[K, V](val rdd: RDD[(K, V)])
 
   override def wrapRDD(rdd: RDD[(K, V)]): JavaPairRDD[K, V] = JavaPairRDD.fromRDD(rdd)
 
-  override val classTag: ClassTag[(K, V)] = rdd.elementClassTag
+  override val classTag: ClassTag[(K, V)] = rdd.unwrappedClassTag
+  override val wrappedClassTag: ClassTag[Wrapper[(K, V)]] = rdd.elementClassTag
 
   import JavaPairRDD._
 

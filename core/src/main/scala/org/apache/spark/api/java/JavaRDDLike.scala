@@ -21,11 +21,11 @@ import java.{lang => jl}
 import java.lang.{Iterable => JIterable}
 import java.util.{Comparator, Iterator => JIterator, List => JList, Map => JMap}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
-
 import org.apache.hadoop.io.compress.CompressionCodec
-
 import org.apache.spark._
 import org.apache.spark.annotation.Since
 import org.apache.spark.api.java.JavaPairRDD._
@@ -54,6 +54,7 @@ trait JavaRDDLike[T, This <: JavaRDDLike[T, This]] extends Serializable {
   def wrapRDD(rdd: RDD[T]): This
 
   implicit val classTag: ClassTag[T]
+  implicit val wrappedClassTag: ClassTag[Wrapper[T]]
 
   def rdd: RDD[T]
 
@@ -81,7 +82,7 @@ trait JavaRDDLike[T, This <: JavaRDDLike[T, This]] extends Serializable {
    * This should ''not'' be called by users directly, but is available for implementors of custom
    * subclasses of RDD.
    */
-  def iterator(split: Partition, taskContext: TaskContext): JIterator[T] =
+  def iterator(split: Partition, taskContext: TaskContext): JIterator[Wrapper[T]] =
     rdd.iterator(split, taskContext).asJava
 
   // Transformations (return a new RDD)
@@ -374,8 +375,8 @@ trait JavaRDDLike[T, This <: JavaRDDLike[T, This]] extends Serializable {
   def collectPartitions(partitionIds: Array[Int]): Array[JList[T]] = {
     // This is useful for implementing `take` from other language frontends
     // like Python where the data is serialized.
-    val res = context.runJob(rdd, (it: Iterator[T]) => it.toArray, partitionIds)
-    res.map(_.toSeq.asJava)
+    val res = context.runJob(rdd, (it: Iterator[Wrapper[T]]) => it.toArray, partitionIds)
+    res.map(_.toSeq.map(_.^).asJava)
   }
 
   /**

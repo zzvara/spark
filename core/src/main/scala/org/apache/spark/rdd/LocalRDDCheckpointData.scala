@@ -17,8 +17,9 @@
 
 package org.apache.spark.rdd
 
-import scala.reflect.ClassTag
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
 import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
@@ -46,7 +47,8 @@ private[spark] class LocalRDDCheckpointData[T: ClassTag](@transient private val 
 
     // Not all actions compute all partitions of the RDD (e.g. take). For correctness, we
     // must cache any missing partitions. TODO: avoid running another job here (SPARK-8582).
-    val action = (tc: TaskContext, iterator: Iterator[T]) => Utils.getIteratorSize(iterator)
+    val action = (tc: TaskContext, iterator: Iterator[Wrapper[T]])
+      => Utils.getIteratorSize(iterator)
     val missingPartitionIndices = rdd.partitions.map(_.index).filter { i =>
       !SparkEnv.get.blockManager.master.contains(RDDBlockId(rdd.id, i))
     }

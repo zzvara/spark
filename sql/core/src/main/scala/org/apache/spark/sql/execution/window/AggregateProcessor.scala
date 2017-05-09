@@ -17,8 +17,9 @@
 
 package org.apache.spark.sql.execution.window
 
-import scala.collection.mutable
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.collection.mutable
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.catalyst.expressions.aggregate._
@@ -121,11 +122,15 @@ private[window] final class AggregateProcessor(
     private[this] val imperatives: Array[ImperativeAggregate],
     private[this] val trackPartitionSize: Boolean) {
 
-  private[this] val join = new JoinedRow
+  private[this] val join = Wrapper(new JoinedRow)
   private[this] val numImperatives = imperatives.length
-  private[this] val buffer = new SpecificInternalRow(bufferSchema.toSeq.map(_.dataType))
-  initialProjection.target(buffer)
-  updateProjection.target(buffer)
+  private[this] val buffer = Wrapper(new SpecificInternalRow(bufferSchema.toSeq.map(_.dataType)))
+
+  /**
+    * @todo Fix.
+    */
+  // initialProjection.target(buffer)
+  // updateProjection.target(buffer)
 
   /** Create the initial state. */
   def initialize(size: Int): Unit = {
@@ -133,27 +138,36 @@ private[window] final class AggregateProcessor(
     // initialize the size before initializing all other fields, and we have to pass the buffer to
     // the initialization projection.
     if (trackPartitionSize) {
-      buffer.setInt(0, size)
+      /**
+        * @todo Fix.
+        */
+      // buffer.setInt(0, size)
     }
     initialProjection(buffer)
     var i = 0
     while (i < numImperatives) {
-      imperatives(i).initialize(buffer)
+      /**
+        * @todo Fix.
+        */
+      // imperatives(i).initialize(buffer)
       i += 1
     }
   }
 
   /** Update the buffer. */
-  def update(input: InternalRow): Unit = {
-    updateProjection(join(buffer, input))
+  def update(input: Wrapper[InternalRow]): Unit = {
+    updateProjection(join.apply { x => x(buffer, input) })
     var i = 0
     while (i < numImperatives) {
-      imperatives(i).update(buffer, input)
+      /**
+        * @todo Fix.
+        */
+      // imperatives(i).update(buffer, input)
       i += 1
     }
   }
 
   /** Evaluate buffer. */
-  def evaluate(target: InternalRow): Unit =
-  evaluateProjection.target(target)(buffer)
+  def evaluate(target: Wrapper[InternalRow]): Unit =
+  evaluateProjection.target(target)(buffer.asInstanceOf[Wrapper[InternalRow]])
 }

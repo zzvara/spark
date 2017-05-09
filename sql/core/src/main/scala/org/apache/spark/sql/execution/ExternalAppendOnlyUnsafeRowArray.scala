@@ -19,8 +19,9 @@ package org.apache.spark.sql.execution
 
 import java.util.ConcurrentModificationException
 
-import scala.collection.mutable.ArrayBuffer
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.collection.mutable.ArrayBuffer
 import org.apache.spark.{SparkEnv, TaskContext}
 import org.apache.spark.internal.Logging
 import org.apache.spark.memory.TaskMemoryManager
@@ -66,7 +67,7 @@ private[sql] class ExternalAppendOnlyUnsafeRowArray(
     Math.min(DefaultInitialSizeOfInMemoryBuffer, numRowsSpillThreshold)
 
   private val inMemoryBuffer = if (initialSizeOfInMemoryBuffer > 0) {
-    new ArrayBuffer[UnsafeRow](initialSizeOfInMemoryBuffer)
+    new ArrayBuffer[Wrapper[UnsafeRow]](initialSizeOfInMemoryBuffer)
   } else {
     null
   }
@@ -101,9 +102,9 @@ private[sql] class ExternalAppendOnlyUnsafeRowArray(
     modificationsCount += 1
   }
 
-  def add(unsafeRow: UnsafeRow): Unit = {
+  def add(unsafeRow: Wrapper[UnsafeRow]): Unit = {
     if (numRows < numRowsSpillThreshold) {
-      inMemoryBuffer += unsafeRow.copy()
+      inMemoryBuffer += unsafeRow.apply[UnsafeRow] { x: UnsafeRow => x.copy() }
     } else {
       if (spillableArray == null) {
         logInfo(s"Reached spill threshold of $numRowsSpillThreshold rows, switching to " +
@@ -126,21 +127,21 @@ private[sql] class ExternalAppendOnlyUnsafeRowArray(
         if (inMemoryBuffer != null) {
           inMemoryBuffer.foreach(existingUnsafeRow =>
             spillableArray.insertRecord(
-              existingUnsafeRow.getBaseObject,
-              existingUnsafeRow.getBaseOffset,
-              existingUnsafeRow.getSizeInBytes,
+              existingUnsafeRow.^().getBaseObject,
+              existingUnsafeRow.^().getBaseOffset,
+              existingUnsafeRow.^().getSizeInBytes,
               0,
               false)
           )
           inMemoryBuffer.clear()
         }
-        numFieldsPerRow = unsafeRow.numFields()
+        numFieldsPerRow = unsafeRow.^().numFields()
       }
 
       spillableArray.insertRecord(
-        unsafeRow.getBaseObject,
-        unsafeRow.getBaseOffset,
-        unsafeRow.getSizeInBytes,
+        unsafeRow.^().getBaseObject,
+        unsafeRow.^().getBaseOffset,
+        unsafeRow.^().getSizeInBytes,
         0,
         false)
     }
@@ -156,7 +157,7 @@ private[sql] class ExternalAppendOnlyUnsafeRowArray(
    * the iterator, then the iterator is invalidated thus saving clients from thinking that they
    * have read all the data while there were new rows added to this array.
    */
-  def generateIterator(startIndex: Int): Iterator[UnsafeRow] = {
+  def generateIterator(startIndex: Int): Iterator[Wrapper[UnsafeRow]] = {
     if (startIndex < 0 || (numRows > 0 && startIndex > numRows)) {
       throw new ArrayIndexOutOfBoundsException(
         "Invalid `startIndex` provided for generating iterator over the array. " +
@@ -170,10 +171,10 @@ private[sql] class ExternalAppendOnlyUnsafeRowArray(
     }
   }
 
-  def generateIterator(): Iterator[UnsafeRow] = generateIterator(startIndex = 0)
+  def generateIterator(): Iterator[Wrapper[UnsafeRow]] = generateIterator(startIndex = 0)
 
   private[this]
-  abstract class ExternalAppendOnlyUnsafeRowArrayIterator extends Iterator[UnsafeRow] {
+  abstract class ExternalAppendOnlyUnsafeRowArrayIterator extends Iterator[Wrapper[UnsafeRow]] {
     private val expectedModificationsCount = modificationsCount
 
     protected def isModified(): Boolean = expectedModificationsCount != modificationsCount
@@ -194,7 +195,7 @@ private[sql] class ExternalAppendOnlyUnsafeRowArray(
 
     override def hasNext(): Boolean = !isModified() && currentIndex < numRows
 
-    override def next(): UnsafeRow = {
+    override def next(): Wrapper[UnsafeRow] = {
       throwExceptionIfModified()
       val result = inMemoryBuffer(currentIndex)
       currentIndex += 1

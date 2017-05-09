@@ -17,8 +17,9 @@
 
 package org.apache.spark.rdd
 
-import scala.reflect.ClassTag
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
 import org.apache.spark.{NarrowDependency, Partition, TaskContext}
 import org.apache.spark.annotation.DeveloperApi
 
@@ -59,7 +60,7 @@ class PartitionPruningRDD[T: ClassTag](
     partitionFilterFunc: Int => Boolean)
   extends RDD[T](prev.context, List(new PruneDependency(prev, partitionFilterFunc))) {
 
-  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[Wrapper[T]] = {
     firstParent[T].iterator(
       split.asInstanceOf[PartitionPruningRDDPartition].parentSplit, context)
   }
@@ -76,7 +77,8 @@ object PartitionPruningRDD {
    * Create a PartitionPruningRDD. This function can be used to create the PartitionPruningRDD
    * when its type T is not known at compile time.
    */
-  def create[T](rdd: RDD[T], partitionFilterFunc: Int => Boolean): PartitionPruningRDD[T] = {
-    new PartitionPruningRDD[T](rdd, partitionFilterFunc)(rdd.elementClassTag)
+  def create[T](rdd: RDD[T], partitionFilterFunc: Int => Boolean)(
+    implicit classTag: ClassTag[T]): PartitionPruningRDD[T] = {
+    new PartitionPruningRDD[T](rdd, partitionFilterFunc)(classTag)
   }
 }

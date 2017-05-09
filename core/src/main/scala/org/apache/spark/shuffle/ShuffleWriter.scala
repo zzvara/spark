@@ -19,6 +19,7 @@ package org.apache.spark.shuffle
 
 import java.io.IOException
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.scheduler.MapStatus
 
 /**
@@ -27,7 +28,7 @@ import org.apache.spark.scheduler.MapStatus
 private[spark] abstract class ShuffleWriter[K, V] {
   /** Write a sequence of records to this task's output */
   @throws[IOException]
-  def write(records: Iterator[Product2[K, V]]): Unit
+  def write(records: Iterator[Product2[K, Wrapper[V]]]): Unit
 
   /** Close this writer, passing along whether the map completed */
   def stop(success: Boolean): Option[MapStatus]

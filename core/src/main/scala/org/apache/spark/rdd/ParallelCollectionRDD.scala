@@ -19,12 +19,13 @@ package org.apache.spark.rdd
 
 import java.io._
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.Serializable
 import scala.collection.Map
 import scala.collection.immutable.NumericRange
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.serializer.JavaSerializer
 import org.apache.spark.util.Utils
@@ -32,10 +33,10 @@ import org.apache.spark.util.Utils
 private[spark] class ParallelCollectionPartition[T: ClassTag](
     var rddId: Long,
     var slice: Int,
-    var values: Seq[T]
+    var values: Seq[Wrapper[T]]
   ) extends Partition with Serializable {
 
-  def iterator: Iterator[T] = values.iterator
+  def iterator: Iterator[Wrapper[T]] = values.iterator
 
   override def hashCode(): Int = (41 * (41 + rddId) + slice).toInt
 
@@ -77,7 +78,7 @@ private[spark] class ParallelCollectionPartition[T: ClassTag](
         slice = in.readInt()
 
         val ser = sfactory.newInstance()
-        Utils.deserializeViaNestedStream(in, ser)(ds => values = ds.readObject[Seq[T]]())
+        Utils.deserializeViaNestedStream(in, ser)(ds => values = ds.readObject[Seq[Wrapper[T]]]())
     }
   }
 }
@@ -98,7 +99,7 @@ private[spark] class ParallelCollectionRDD[T: ClassTag](
     slices.indices.map(i => new ParallelCollectionPartition(id, i, slices(i))).toArray
   }
 
-  override def compute(s: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(s: Partition, context: TaskContext): Iterator[Wrapper[T]] = {
     new InterruptibleIterator(context, s.asInstanceOf[ParallelCollectionPartition[T]].iterator)
   }
 
@@ -114,7 +115,7 @@ private object ParallelCollectionRDD {
    * it efficient to run Spark over RDDs representing large sets of numbers. And if the collection
    * is an inclusive Range, we use inclusive range for the last slice.
    */
-  def slice[T: ClassTag](seq: Seq[T], numSlices: Int): Seq[Seq[T]] = {
+  def slice[T: ClassTag](seq: Seq[T], numSlices: Int): Seq[Seq[Wrapper[T]]] = {
     if (numSlices < 1) {
       throw new IllegalArgumentException("Positive number of partitions required")
     }
@@ -137,14 +138,14 @@ private object ParallelCollectionRDD {
           else {
             new Range(r.start + start * r.step, r.start + end * r.step, r.step)
           }
-        }.toSeq.asInstanceOf[Seq[Seq[T]]]
+        }.toSeq.asInstanceOf[Seq[Seq[T]]].map { Wrapper ~ _ }
       case nr: NumericRange[_] =>
         // For ranges of Long, Double, BigInteger, etc
-        val slices = new ArrayBuffer[Seq[T]](numSlices)
+        val slices = new ArrayBuffer[Seq[Wrapper[T]]](numSlices)
         var r = nr
         for ((start, end) <- positions(nr.length, numSlices)) {
           val sliceSize = end - start
-          slices += r.take(sliceSize).asInstanceOf[Seq[T]]
+          slices += Wrapper ~ r.take(sliceSize).asInstanceOf[Seq[T]]
           r = r.drop(sliceSize)
         }
         slices
@@ -152,7 +153,7 @@ private object ParallelCollectionRDD {
         val array = seq.toArray // To prevent O(n^2) operations for List etc
         positions(array.length, numSlices).map { case (start, end) =>
             array.slice(start, end).toSeq
-        }.toSeq
+        }.toSeq.map { Wrapper ~ _ }
     }
   }
 }

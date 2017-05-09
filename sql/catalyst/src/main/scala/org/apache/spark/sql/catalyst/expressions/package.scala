@@ -18,7 +18,7 @@
 package org.apache.spark.sql.catalyst
 
 import com.google.common.collect.Maps
-
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.sql.catalyst.expressions._
 import org.apache.spark.sql.types.{StructField, StructType}
 
@@ -64,7 +64,7 @@ package object expressions  {
    * column of the new row. If the schema of the input row is specified, then the given expression
    * will be bound to that schema.
    */
-  abstract class Projection extends (InternalRow => InternalRow) {
+  abstract class Projection extends (Wrapper[InternalRow] => Wrapper[InternalRow]) {
 
     /**
      * Initializes internal states given the current partition index.
@@ -86,10 +86,10 @@ package object expressions  {
    * `InternalRow.copy()` and hold on to the returned [[InternalRow]] before calling `next()`.
    */
   abstract class MutableProjection extends Projection {
-    def currentValue: InternalRow
+    def currentValue: Wrapper[InternalRow]
 
     /** Uses the given row to store the output of the projection. */
-    def target(row: InternalRow): MutableProjection
+    def target(row: Wrapper[InternalRow]): MutableProjection
   }
 
 

@@ -19,10 +19,12 @@ package org.apache.spark.rdd
 
 import java.util.{HashMap => JHashMap}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
+import scala.language.postfixOps
 import org.apache.spark.Dependency
 import org.apache.spark.OneToOneDependency
 import org.apache.spark.Partition
@@ -52,7 +54,6 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
     @transient var rdd2: RDD[_ <: Product2[K, W]],
     part: Partitioner)
   extends RDD[(K, V)](rdd1.context, Nil) {
-
 
   override def getDependencies: Seq[Dependency[_]] = {
     def rddDependency[T1: ClassTag, T2: ClassTag](rdd: RDD[_ <: Product2[T1, T2]])
@@ -86,7 +87,7 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
 
   override val partitioner = Some(part)
 
-  override def compute(p: Partition, context: TaskContext): Iterator[(K, V)] = {
+  override def compute(p: Partition, context: TaskContext): Iterator[Wrapper[(K, V)]] = {
     val partition = p.asInstanceOf[CoGroupPartition]
     val map = new JHashMap[K, ArrayBuffer[V]]
     def getSeq(k: K): ArrayBuffer[V] = {
@@ -99,27 +100,27 @@ private[spark] class SubtractedRDD[K: ClassTag, V: ClassTag, W: ClassTag](
         seq
       }
     }
-    def integrate(depNum: Int, op: Product2[K, V] => Unit): Unit = {
+    def integrate(depNum: Int, op: Wrapper[Product2[K, V]] => Unit): Unit = {
       dependencies(depNum) match {
         case oneToOneDependency: OneToOneDependency[_] =>
           val dependencyPartition = partition.narrowDeps(depNum).get.split
           oneToOneDependency.rdd.iterator(dependencyPartition, context)
-            .asInstanceOf[Iterator[Product2[K, V]]].foreach(op)
+            .asInstanceOf[Iterator[Wrapper[Product2[K, V]]]].foreach(op)
 
         case shuffleDependency: ShuffleDependency[_, _, _] =>
           val iter = SparkEnv.get.shuffleManager
-            .getReader(
+            .getReader[K, V](
               shuffleDependency.shuffleHandle, partition.index, partition.index + 1, context)
             .read()
-          iter.foreach(op)
+          iter.asInstanceOf[Iterator[Wrapper[Product2[K, V]]]].foreach(op)
       }
     }
 
     // the first dep is rdd1; add all values to the map
-    integrate(0, t => getSeq(t._1) += t._2)
+    integrate(0, t => getSeq((t^)._1) += (t^)._2)
     // the second dep is rdd2; remove all of its keys
-    integrate(1, t => map.remove(t._1))
-    map.asScala.iterator.map(t => t._2.iterator.map((t._1, _))).flatten
+    integrate(1, t => map.remove((t^)._1))
+    map.asScala.iterator.flatMap(t => t._2.iterator.map { x => Wrapper((t._1, x)) })
   }
 
   override def clearDependencies() {

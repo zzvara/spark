@@ -21,18 +21,21 @@ import java.io._
 import java.net.{InetAddress, ServerSocket}
 import java.util.Arrays
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.io.Source
 import scala.util.Try
-
 import org.apache.spark._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.internal.Logging
 import org.apache.spark.util.Utils
 
+import scala.reflect.ClassTag
+
 /**
  * A helper class to run R UDFs in Spark.
  */
-private[spark] class RRunner[U](
+private[spark] class RRunner[U: ClassTag](
     func: Array[Byte],
     deserializer: String,
     serializer: String,
@@ -55,8 +58,8 @@ private[spark] class RRunner[U](
   }
 
   def compute(
-      inputIterator: Iterator[_],
-      partitionIndex: Int): Iterator[U] = {
+      inputIterator: Iterator[Wrapper[_]],
+      partitionIndex: Int): Iterator[Wrapper[U]] = {
     // Timing start
     bootTime = System.currentTimeMillis / 1000.0
 
@@ -84,13 +87,13 @@ private[spark] class RRunner[U](
     serverSocket.close()
 
     try {
-      return new Iterator[U] {
-        def next(): U = {
+      return new Iterator[Wrapper[U]] {
+        def next(): Wrapper[U] = {
           val obj = _nextObj
           if (hasNext) {
             _nextObj = read()
           }
-          obj
+          Wrapper(obj)
         }
 
         var _nextObj = read()

@@ -29,10 +29,10 @@ import scala.collection.Map
 import scala.collection.generic.Growable
 import scala.collection.mutable.HashMap
 import scala.language.implicitConversions
-import scala.reflect.{classTag, ClassTag}
+import scala.reflect.{ClassTag, classTag}
 import scala.util.control.NonFatal
-
 import com.google.common.collect.MapMaker
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.commons.lang3.SerializationUtils
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.fs.{FileSystem, Path}
@@ -40,7 +40,6 @@ import org.apache.hadoop.io.{ArrayWritable, BooleanWritable, BytesWritable, Doub
 import org.apache.hadoop.mapred.{FileInputFormat, InputFormat, JobConf, SequenceFileInputFormat, TextInputFormat}
 import org.apache.hadoop.mapreduce.{InputFormat => NewInputFormat, Job => NewHadoopJob}
 import org.apache.hadoop.mapreduce.lib.input.{FileInputFormat => NewFileInputFormat}
-
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.deploy.{LocalSparkCluster, SparkHadoopUtil}
@@ -306,6 +305,10 @@ class SparkContext(config: SparkConf) extends Logging {
     _dagScheduler = ds
   }
 
+  private[spark] var _wrapperClass : Class[_] = _
+
+  def wrapperClass : Class[_] = _wrapperClass
+
   /**
    * A unique identifier for the Spark application.
    * Its format depends on the scheduler implementation.
@@ -371,6 +374,10 @@ class SparkContext(config: SparkConf) extends Logging {
   try {
     _conf = config.clone()
     _conf.validateSettings()
+
+    _wrapperClass = Class.forName(_conf.get("spark.wrapper", "org.apache.spark.rdd.Wrapper"))
+    logInfo("The wrapper class is " + _wrapperClass.getName)
+    Wrapper.setWrapperClass(_wrapperClass)
 
     if (!_conf.contains("spark.master")) {
       throw new SparkException("A master URL must be set in your configuration")
@@ -2006,11 +2013,11 @@ class SparkContext(config: SparkConf) extends Logging {
    * partitions of the target RDD, e.g. for operations like `first()`
    * @param resultHandler callback to pass each result to
    */
-  def runJob[T, U: ClassTag](
-      rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
-      partitions: Seq[Int],
-      resultHandler: (Int, U) => Unit): Unit = {
+  def runJob[T: ClassTag, U: ClassTag](
+    rdd: RDD[T],
+    func: (TaskContext, Iterator[Wrapper[T]]) => U,
+    partitions: Seq[Int],
+    resultHandler: (Int, U) => Unit): Unit = {
     if (stopped.get()) {
       throw new IllegalStateException("SparkContext has been shutdown")
     }
@@ -2036,12 +2043,12 @@ class SparkContext(config: SparkConf) extends Logging {
    * @return in-memory collection with a result of the job (each collection element will contain
    * a result from one partition)
    */
-  def runJob[T, U: ClassTag](
+  def runJob[T: ClassTag, U: ClassTag](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[Wrapper[T]]) => U,
       partitions: Seq[Int]): Array[U] = {
     val results = new Array[U](partitions.size)
-    runJob[T, U](rdd, func, partitions, (index, res) => results(index) = res)
+    runJob[T, U](rdd, func, partitions, (index, res: U) => results(index) = res)
     results
   }
 
@@ -2055,12 +2062,12 @@ class SparkContext(config: SparkConf) extends Logging {
    * @return in-memory collection with a result of the job (each collection element will contain
    * a result from one partition)
    */
-  def runJob[T, U: ClassTag](
+  def runJob[T: ClassTag, U: ClassTag](
       rdd: RDD[T],
-      func: Iterator[T] => U,
+      func: Iterator[Wrapper[T]] => U,
       partitions: Seq[Int]): Array[U] = {
     val cleanedFunc = clean(func)
-    runJob(rdd, (ctx: TaskContext, it: Iterator[T]) => cleanedFunc(it), partitions)
+    runJob(rdd, (ctx: TaskContext, it: Iterator[Wrapper[T]]) => cleanedFunc(it), partitions)
   }
 
   /**
@@ -2072,7 +2079,8 @@ class SparkContext(config: SparkConf) extends Logging {
    * @return in-memory collection with a result of the job (each collection element will contain
    * a result from one partition)
    */
-  def runJob[T, U: ClassTag](rdd: RDD[T], func: (TaskContext, Iterator[T]) => U): Array[U] = {
+  def runJob[T: ClassTag, U: ClassTag](rdd: RDD[T],
+                                       func: (TaskContext, Iterator[Wrapper[T]]) => U): Array[U] = {
     runJob(rdd, func, 0 until rdd.partitions.length)
   }
 
@@ -2084,7 +2092,7 @@ class SparkContext(config: SparkConf) extends Logging {
    * @return in-memory collection with a result of the job (each collection element will contain
    * a result from one partition)
    */
-  def runJob[T, U: ClassTag](rdd: RDD[T], func: Iterator[T] => U): Array[U] = {
+  def runJob[T: ClassTag, U: ClassTag](rdd: RDD[T], func: Iterator[Wrapper[T]] => U): Array[U] = {
     runJob(rdd, func, 0 until rdd.partitions.length)
   }
 
@@ -2096,9 +2104,9 @@ class SparkContext(config: SparkConf) extends Logging {
    * @param processPartition a function to run on each partition of the RDD
    * @param resultHandler callback to pass each result to
    */
-  def runJob[T, U: ClassTag](
+  def runJob[T: ClassTag, U: ClassTag](
     rdd: RDD[T],
-    processPartition: (TaskContext, Iterator[T]) => U,
+    processPartition: (TaskContext, Iterator[Wrapper[T]]) => U,
     resultHandler: (Int, U) => Unit)
   {
     runJob[T, U](rdd, processPartition, 0 until rdd.partitions.length, resultHandler)
@@ -2111,12 +2119,12 @@ class SparkContext(config: SparkConf) extends Logging {
    * @param processPartition a function to run on each partition of the RDD
    * @param resultHandler callback to pass each result to
    */
-  def runJob[T, U: ClassTag](
+  def runJob[T: ClassTag, U: ClassTag](
       rdd: RDD[T],
-      processPartition: Iterator[T] => U,
+      processPartition: Iterator[Wrapper[T]] => U,
       resultHandler: (Int, U) => Unit)
   {
-    val processFunc = (context: TaskContext, iter: Iterator[T]) => processPartition(iter)
+    val processFunc = (context: TaskContext, iter: Iterator[Wrapper[T]]) => processPartition(iter)
     runJob[T, U](rdd, processFunc, 0 until rdd.partitions.length, resultHandler)
   }
 
@@ -2132,9 +2140,9 @@ class SparkContext(config: SparkConf) extends Logging {
    * after timeout)
    */
   @DeveloperApi
-  def runApproximateJob[T, U, R](
+  def runApproximateJob[T: ClassTag, U: ClassTag, R: ClassTag](
       rdd: RDD[T],
-      func: (TaskContext, Iterator[T]) => U,
+      func: (TaskContext, Iterator[Wrapper[T]]) => U,
       evaluator: ApproximateEvaluator[U, R],
       timeout: Long): PartialResult[R] = {
     assertNotStopped()
@@ -2159,9 +2167,9 @@ class SparkContext(config: SparkConf) extends Logging {
    * @param resultHandler callback to pass each result to
    * @param resultFunc function to be executed when the result is ready
    */
-  def submitJob[T, U, R](
+  def submitJob[T: ClassTag, U: ClassTag, R: ClassTag](
       rdd: RDD[T],
-      processPartition: Iterator[T] => U,
+      processPartition: Iterator[Wrapper[T]] => U,
       partitions: Seq[Int],
       resultHandler: (Int, U) => Unit,
       resultFunc: => R): SimpleFutureAction[R] =
@@ -2171,7 +2179,7 @@ class SparkContext(config: SparkConf) extends Logging {
     val callSite = getCallSite
     val waiter = dagScheduler.submitJob(
       rdd,
-      (context: TaskContext, iter: Iterator[T]) => cleanF(iter),
+      (context: TaskContext, iter: Iterator[Wrapper[T]]) => cleanF(iter),
       partitions,
       callSite,
       resultHandler,

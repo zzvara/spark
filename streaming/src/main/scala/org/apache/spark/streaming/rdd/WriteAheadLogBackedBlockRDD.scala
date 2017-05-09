@@ -20,9 +20,10 @@ import java.io.File
 import java.nio.ByteBuffer
 import java.util.UUID
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.reflect.ClassTag
 import scala.util.control.NonFatal
-
 import org.apache.spark._
 import org.apache.spark.rdd.BlockRDD
 import org.apache.spark.storage.{BlockId, StorageLevel}
@@ -111,7 +112,7 @@ class WriteAheadLogBackedBlockRDD[T: ClassTag](
    * If the block does not exist, then the data is read from the corresponding record
    * in write ahead log files.
    */
-  override def compute(split: Partition, context: TaskContext): Iterator[T] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[Wrapper[T]] = {
     assertValid()
     val hadoopConf = broadcastedHadoopConf.value
     val blockManager = SparkEnv.get.blockManager
@@ -119,11 +120,11 @@ class WriteAheadLogBackedBlockRDD[T: ClassTag](
     val partition = split.asInstanceOf[WriteAheadLogBackedBlockRDDPartition]
     val blockId = partition.blockId
 
-    def getBlockFromBlockManager(): Option[Iterator[T]] = {
-      blockManager.get[T](blockId).map(_.data.asInstanceOf[Iterator[T]])
+    def getBlockFromBlockManager(): Option[Iterator[Wrapper[T]]] = {
+      blockManager.get[T](blockId).map(_.data.asInstanceOf[Iterator[Wrapper[T]]])
     }
 
-    def getBlockFromWriteAheadLog(): Iterator[T] = {
+    def getBlockFromWriteAheadLog(): Iterator[Wrapper[T]] = {
       var dataRead: ByteBuffer = null
       var writeAheadLog: WriteAheadLog = null
       try {
@@ -166,7 +167,7 @@ class WriteAheadLogBackedBlockRDD[T: ClassTag](
         .dataDeserializeStream(
           blockId,
           new ChunkedByteBuffer(dataRead).toInputStream())(elementClassTag)
-        .asInstanceOf[Iterator[T]]
+        .asInstanceOf[Iterator[Wrapper[T]]]
     }
 
     if (partition.isBlockIdValid) {

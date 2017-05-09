@@ -17,6 +17,7 @@
 
 package org.apache.spark.rdd
 
+import hu.sztaki.ilab.traceable.Wrapper
 import org.apache.spark.annotation.Since
 import org.apache.spark.TaskContext
 import org.apache.spark.internal.Logging
@@ -96,7 +97,8 @@ class DoubleRDDFunctions(self: RDD[Double]) extends Logging with Serializable {
   def meanApprox(
       timeout: Long,
       confidence: Double = 0.95): PartialResult[BoundedDouble] = self.withScope {
-    val processPartition = (ctx: TaskContext, ns: Iterator[Double]) => StatCounter(ns)
+    val processPartition = (ctx: TaskContext, ns: Iterator[Wrapper[Double]]) =>
+      StatCounter(Wrapper.toUnwrapped(ns))
     val evaluator = new MeanEvaluator(self.partitions.length, confidence)
     self.context.runApproximateJob(self, processPartition, evaluator, timeout)
   }
@@ -107,7 +109,8 @@ class DoubleRDDFunctions(self: RDD[Double]) extends Logging with Serializable {
   def sumApprox(
       timeout: Long,
       confidence: Double = 0.95): PartialResult[BoundedDouble] = self.withScope {
-    val processPartition = (ctx: TaskContext, ns: Iterator[Double]) => StatCounter(ns)
+    val processPartition = (ctx: TaskContext, ns: Iterator[Wrapper[Double]]) =>
+      StatCounter(Wrapper.toUnwrapped(ns))
     val evaluator = new SumEvaluator(self.partitions.length, confidence)
     self.context.runApproximateJob(self, processPartition, evaluator, timeout)
   }

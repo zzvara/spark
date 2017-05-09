@@ -17,8 +17,9 @@
 
 package org.apache.spark.streaming.dstream
 
-import scala.reflect.ClassTag
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.reflect.ClassTag
 import org.apache.spark._
 import org.apache.spark.annotation.Experimental
 import org.apache.spark.rdd.{EmptyRDD, RDD}
@@ -62,7 +63,11 @@ private[streaming] class MapWithStateDStreamImpl[
   override def dependencies: List[DStream[_]] = List(internalStream)
 
   override def compute(validTime: Time): Option[RDD[MappedType]] = {
-    internalStream.getOrCompute(validTime).map { _.flatMap[MappedType] { _.mappedData } }
+    internalStream.getOrCompute(validTime).map {
+      _.flatMap[MappedType] { w =>
+        Wrapper.toUnwrapped[MappedType](w.mappedData.iterator)
+      }
+    }
   }
 
   /**
@@ -77,7 +82,7 @@ private[streaming] class MapWithStateDStreamImpl[
   /** Return a pair DStream where each RDD is the snapshot of the state of all the keys. */
   def stateSnapshots(): DStream[(KeyType, StateType)] = {
     internalStream.flatMap {
-      _.stateMap.getAll().map { case (k, s, _) => (k, s) }.toTraversable }
+      _.stateMap.getAll().map { case (k, s, _) => (k, s.^()) }.toTraversable }
   }
 
   def keyClass: Class[_] = implicitly[ClassTag[KeyType]].runtimeClass
@@ -138,7 +143,8 @@ class InternalMapWithStateDStream[K: ClassTag, V: ClassTag, S: ClassTag, E: Clas
           // partition index as the key. This is to ensure that state RDD is always partitioned
           // before creating another state RDD using it
           MapWithStateRDD.createFromRDD[K, V, S, E](
-            rdd.flatMap { _.stateMap.getAll() }, partitioner, validTime)
+            rdd.flatMap { _.stateMap.getAll().map(t => (t._1, t._2.^(), t._3)) },
+              partitioner, validTime)
         } else {
           rdd
         }

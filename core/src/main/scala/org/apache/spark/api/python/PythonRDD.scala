@@ -22,16 +22,16 @@ import java.net._
 import java.nio.charset.StandardCharsets
 import java.util.{ArrayList => JArrayList, List => JList, Map => JMap}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.JavaConverters._
 import scala.collection.mutable
 import scala.language.existentials
 import scala.util.control.NonFatal
-
 import org.apache.hadoop.conf.Configuration
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.hadoop.mapred.{InputFormat, JobConf, OutputFormat}
 import org.apache.hadoop.mapreduce.{InputFormat => NewInputFormat, OutputFormat => NewOutputFormat}
-
 import org.apache.spark._
 import org.apache.spark.api.java.{JavaPairRDD, JavaRDD, JavaSparkContext}
 import org.apache.spark.broadcast.Broadcast
@@ -39,7 +39,6 @@ import org.apache.spark.input.PortableDataStream
 import org.apache.spark.internal.Logging
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util._
-
 
 private[spark] class PythonRDD(
     parent: RDD[_],
@@ -58,7 +57,7 @@ private[spark] class PythonRDD(
 
   val asJavaRDD: JavaRDD[Array[Byte]] = JavaRDD.fromRDD(this)
 
-  override def compute(split: Partition, context: TaskContext): Iterator[Array[Byte]] = {
+  override def compute(split: Partition, context: TaskContext): Iterator[Wrapper[Array[Byte]]] = {
     val runner = PythonRunner(func, bufferSize, reuse_worker)
     runner.compute(firstParent.iterator(split, context), split.index, context)
   }
@@ -117,7 +116,7 @@ private[spark] class PythonRunner(
   def compute(
       inputIterator: Iterator[_],
       partitionIndex: Int,
-      context: TaskContext): Iterator[Array[Byte]] = {
+      context: TaskContext): Iterator[Wrapper[Array[Byte]]] = {
     val startTime = System.currentTimeMillis
     val env = SparkEnv.get
     val localdir = env.blockManager.diskBlockManager.localDirs.map(f => f.getPath()).mkString(",")
@@ -235,7 +234,7 @@ private[spark] class PythonRunner(
 
       override def hasNext: Boolean = _nextObj != null
     }
-    new InterruptibleIterator(context, stdoutIterator)
+    new InterruptibleIterator(context, Wrapper ~ stdoutIterator)
   }
 
   /**
@@ -391,9 +390,10 @@ private class PythonException(msg: String, cause: Exception) extends RuntimeExce
 private class PairwiseRDD(prev: RDD[Array[Byte]]) extends RDD[(Long, Array[Byte])](prev) {
   override def getPartitions: Array[Partition] = prev.partitions
   override val partitioner: Option[Partitioner] = prev.partitioner
-  override def compute(split: Partition, context: TaskContext): Iterator[(Long, Array[Byte])] =
+  override def compute(split: Partition,
+                       context: TaskContext): Iterator[Wrapper[(Long, Array[Byte])]] =
     prev.iterator(split, context).grouped(2).map {
-      case Seq(a, b) => (Utils.deserializeLongValue(a), b)
+      case Seq(a, b) => Wrapper ~ (Utils.deserializeLongValue(a^), b)
       case x => throw new SparkException("PairwiseRDD: unexpected value: " + x)
     }
   val asJavaPairRDD : JavaPairRDD[Long, Array[Byte]] = JavaPairRDD.fromRDD(this)
@@ -443,7 +443,7 @@ private[spark] object PythonRDD extends Logging {
     type ByteArray = Array[Byte]
     type UnrolledPartition = Array[ByteArray]
     val allPartitions: Array[UnrolledPartition] =
-      sc.runJob(rdd, (x: Iterator[ByteArray]) => x.toArray, partitions.asScala)
+      sc.runJob(rdd, (x: Iterator[Wrapper[ByteArray]]) => Wrapper ~ x.toArray, partitions.asScala)
     val flattenedPartition: UnrolledPartition = Array.concat(allPartitions: _*)
     serveIterator(flattenedPartition.iterator,
       s"serve RDD ${rdd.id} with partitions ${partitions.asScala.mkString(",")}")

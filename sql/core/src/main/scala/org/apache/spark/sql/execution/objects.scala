@@ -17,8 +17,9 @@
 
 package org.apache.spark.sql.execution
 
-import scala.language.existentials
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.language.existentials
 import org.apache.spark.api.java.function.MapFunction
 import org.apache.spark.api.r._
 import org.apache.spark.broadcast.Broadcast
@@ -425,9 +426,9 @@ case class FlatMapGroupsInRExec(
         (newKey, newIter)
       }
 
-      val outputIter = runner.compute(groupedRBytes, -1)
+      val outputIter = runner.compute(Wrapper ~ groupedRBytes, -1)
       if (!isSerializedRData) {
-        val result = outputIter.map { bytes => bytesToRow(bytes, outputSchema) }
+        val result = outputIter.map { bytes => bytesToRow(bytes.^(), outputSchema) }
         result.map(outputObject)
       } else {
         val result = outputIter.map { bytes => Row.fromSeq(Seq(bytes)) }

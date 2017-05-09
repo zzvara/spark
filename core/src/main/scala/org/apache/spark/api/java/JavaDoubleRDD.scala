@@ -19,9 +19,10 @@ package org.apache.spark.api.java
 
 import java.lang.{Double => JDouble}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.language.implicitConversions
 import scala.reflect.ClassTag
-
 import org.apache.spark.annotation.Since
 import org.apache.spark.Partitioner
 import org.apache.spark.api.java.function.{Function => JFunction}
@@ -33,6 +34,8 @@ import org.apache.spark.util.Utils
 
 class JavaDoubleRDD(val srdd: RDD[scala.Double])
   extends AbstractJavaRDDLike[JDouble, JavaDoubleRDD] {
+
+  override val wrappedClassTag = implicitly[ClassTag[Wrapper[JDouble]]]
 
   override val classTag: ClassTag[JDouble] = implicitly[ClassTag[JDouble]]
 

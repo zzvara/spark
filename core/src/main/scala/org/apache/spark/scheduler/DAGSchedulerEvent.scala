@@ -19,8 +19,9 @@ package org.apache.spark.scheduler
 
 import java.util.Properties
 
-import scala.language.existentials
+import hu.sztaki.ilab.traceable.Wrapper
 
+import scala.language.existentials
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.util.{AccumulatorV2, CallSite}
@@ -35,13 +36,13 @@ private[scheduler] sealed trait DAGSchedulerEvent
 
 /** A result-yielding job was submitted on a target RDD */
 private[scheduler] case class JobSubmitted(
-    jobId: Int,
-    finalRDD: RDD[_],
-    func: (TaskContext, Iterator[_]) => _,
-    partitions: Array[Int],
-    callSite: CallSite,
-    listener: JobListener,
-    properties: Properties = null)
+  jobId: Int,
+  finalRDD: RDD[_],
+  func: (TaskContext, Iterator[Wrapper[_]]) => _,
+  partitions: Array[Int],
+  callSite: CallSite,
+  listener: JobListener,
+  properties: Properties = null)
   extends DAGSchedulerEvent
 
 /** A map stage as submitted to run as a separate job */

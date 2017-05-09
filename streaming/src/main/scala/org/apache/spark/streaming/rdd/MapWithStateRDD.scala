@@ -19,9 +19,10 @@ package org.apache.spark.streaming.rdd
 
 import java.io.{IOException, ObjectOutputStream}
 
+import hu.sztaki.ilab.traceable.Wrapper
+
 import scala.collection.mutable.ArrayBuffer
 import scala.reflect.ClassTag
-
 import org.apache.spark._
 import org.apache.spark.rdd.RDD
 import org.apache.spark.streaming.{State, StateImpl, Time}
@@ -33,22 +34,24 @@ import org.apache.spark.util.Utils
  * sequence of records returned by the mapping function of `mapWithState`.
  */
 private[streaming] case class MapWithStateRDDRecord[K, S, E](
-    var stateMap: StateMap[K, S], var mappedData: Seq[E])
+  var stateMap: StateMap[K, Wrapper[S]], var mappedData: Seq[Wrapper[E]])
 
 private[streaming] object MapWithStateRDDRecord {
   def updateRecordWithData[K: ClassTag, V: ClassTag, S: ClassTag, E: ClassTag](
     prevRecord: Option[MapWithStateRDDRecord[K, S, E]],
-    dataIterator: Iterator[(K, V)],
-    mappingFunction: (Time, K, Option[V], State[S]) => Option[E],
+    dataIterator: Iterator[(K, Wrapper[V])],
+    mappingFunction: (Time, K, Option[Wrapper[V]], State[Wrapper[S]]) => Option[Wrapper[E]],
     batchTime: Time,
     timeoutThresholdTime: Option[Long],
     removeTimedoutData: Boolean
   ): MapWithStateRDDRecord[K, S, E] = {
     // Create a new state map by cloning the previous one (if it exists) or by creating an empty one
-    val newStateMap = prevRecord.map { _.stateMap.copy() }. getOrElse { new EmptyStateMap[K, S]() }
+    val newStateMap = prevRecord.map { _.stateMap.copy() }. getOrElse {
+      new EmptyStateMap[K, Wrapper[S]]()
+    }
 
-    val mappedData = new ArrayBuffer[E]
-    val wrappedState = new StateImpl[S]()
+    val mappedData = new ArrayBuffer[Wrapper[E]]
+    val wrappedState = new StateImpl[Wrapper[S]]()
 
     // Call the mapping function on each record in the data iterator, and accordingly
     // update the states touched, and collect the data returned by the mapping function
@@ -147,7 +150,8 @@ private[streaming] class MapWithStateRDD[K: ClassTag, V: ClassTag, S: ClassTag, 
   }
 
   override def compute(
-      partition: Partition, context: TaskContext): Iterator[MapWithStateRDDRecord[K, S, E]] = {
+      partition: Partition, context: TaskContext):
+  Iterator[Wrapper[MapWithStateRDDRecord[K, S, E]]] = {
 
     val stateRDDPartition = partition.asInstanceOf[MapWithStateRDDPartition]
     val prevStateRDDIterator = prevStateRDD.iterator(
@@ -156,15 +160,22 @@ private[streaming] class MapWithStateRDD[K: ClassTag, V: ClassTag, S: ClassTag, 
       stateRDDPartition.partitionedDataRDDPartition, context)
 
     val prevRecord = if (prevStateRDDIterator.hasNext) Some(prevStateRDDIterator.next()) else None
-    val newRecord = MapWithStateRDDRecord.updateRecordWithData(
+
+    /**
+      * @todo Fix.
+      */
+    /*
+    val newRecord = Wrapper(MapWithStateRDDRecord.updateRecordWithData(
       prevRecord,
       dataIterator,
       mappingFunction,
       batchTime,
       timeoutThresholdTime,
       removeTimedoutData = doFullScan // remove timedout data only when full scan is enabled
-    )
+    ))
     Iterator(newRecord)
+    */
+    ???
   }
 
   override protected def getPartitions: Array[Partition] = {
@@ -190,6 +201,10 @@ private[streaming] object MapWithStateRDD {
       partitioner: Partitioner,
       updateTime: Time): MapWithStateRDD[K, V, S, E] = {
 
+    /**
+      * @todo Fix.
+      */
+    /*
     val stateRDD = pairRDD.partitionBy(partitioner).mapPartitions ({ iterator =>
       val stateMap = StateMap.create[K, S](SparkEnv.get.conf)
       iterator.foreach { case (key, state) => stateMap.put(key, state, updateTime.milliseconds) }
@@ -202,6 +217,8 @@ private[streaming] object MapWithStateRDD {
 
     new MapWithStateRDD[K, V, S, E](
       stateRDD, emptyDataRDD, noOpFunc, updateTime, None)
+      */
+    ???
   }
 
   def createFromRDD[K: ClassTag, V: ClassTag, S: ClassTag, E: ClassTag](
@@ -209,6 +226,10 @@ private[streaming] object MapWithStateRDD {
       partitioner: Partitioner,
       updateTime: Time): MapWithStateRDD[K, V, S, E] = {
 
+    /**
+      * @todo Fix.
+      */
+    /*
     val pairRDD = rdd.map { x => (x._1, (x._2, x._3)) }
     val stateRDD = pairRDD.partitionBy(partitioner).mapPartitions({ iterator =>
       val stateMap = StateMap.create[K, S](SparkEnv.get.conf)
@@ -224,5 +245,7 @@ private[streaming] object MapWithStateRDD {
 
     new MapWithStateRDD[K, V, S, E](
       stateRDD, emptyDataRDD, noOpFunc, updateTime, None)
+      */
+    ???
   }
 }
