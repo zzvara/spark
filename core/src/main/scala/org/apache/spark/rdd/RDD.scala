@@ -26,7 +26,8 @@ import scala.language.implicitConversions
 import scala.language.postfixOps
 import scala.reflect.{ClassTag, classTag}
 import com.clearspring.analytics.stream.cardinality.HyperLogLogPlus
-import hu.sztaki.ilab.traceable.Wrapper
+import hu.sztaki.ilab.traceable.Wrapper.Attachment
+import hu.sztaki.ilab.traceable.{Owner, Wrapper, afterReduce}
 import org.apache.hadoop.io.{BytesWritable, NullWritable, Text}
 import org.apache.hadoop.io.compress.CompressionCodec
 import org.apache.hadoop.mapred.TextOutputFormat
@@ -40,9 +41,12 @@ import org.apache.spark.partial.CountEvaluator
 import org.apache.spark.partial.GroupedCountEvaluator
 import org.apache.spark.partial.PartialResult
 import org.apache.spark.storage.{RDDBlockId, StorageLevel}
+import org.apache.spark.traceable.afterMapPartition
 import org.apache.spark.util.{BoundedPriorityQueue, Utils}
 import org.apache.spark.util.collection.{OpenHashMap, Utils => collectionUtils}
 import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, PoissonSampler, SamplingUtils}
+
+import scala.collection.immutable.HashMap
 
 /**
  * A Resilient Distributed Dataset (RDD), the basic abstraction in Spark. Represents an immutable,
@@ -74,8 +78,9 @@ import org.apache.spark.util.random.{BernoulliCellSampler, BernoulliSampler, Poi
  */
 abstract class RDD[T: ClassTag](
     @transient private var _sc: SparkContext,
-    @transient private var deps: Seq[Dependency[_]]
-  ) extends Serializable with Logging {
+    @transient private var deps: Seq[Dependency[_]])
+extends Owner[T] with Serializable with Logging {
+  def callSite: String = getCreationSite
 
   if (classOf[RDD[_]].isAssignableFrom(elementClassTag.runtimeClass)) {
     // This is a warning instead of an exception in order to avoid breaking user programs that
@@ -373,7 +378,7 @@ abstract class RDD[T: ClassTag](
   def map[U: ClassTag](f: T => U): RDD[U] = withScope {
     val cleanF = sc.clean(f)
     new MapPartitionsRDD[U, T](
-      this, (context, pid, iter: Iterator[Wrapper[T]]) => iter.map(_(cleanF)))
+      this, (self, context, pid, iter: Iterator[Wrapper[T]]) => iter.map(_(cleanF)))
   }
 
   /**
@@ -383,7 +388,7 @@ abstract class RDD[T: ClassTag](
   def flatMap[U: ClassTag](f: T => TraversableOnce[U]): RDD[U] = withScope {
     val cleanF = sc.clean(f)
     new MapPartitionsRDD[U, T](
-      this, (context, pid, iter: Iterator[Wrapper[T]]) => iter.flatMap(_(cleanF)))
+      this, (self, context, pid, iter: Iterator[Wrapper[T]]) => iter.flatMap(_(cleanF)))
   }
 
   /**
@@ -393,7 +398,7 @@ abstract class RDD[T: ClassTag](
     val cleanF = sc.clean(f)
     new MapPartitionsRDD[T, T](
       this,
-      (context, pid, iter: Iterator[Wrapper[T]]) => iter
+      (self, context, pid, iter: Iterator[Wrapper[T]]) => iter
         .flatMap(_(cleanF)),
       preservesPartitioning = true)
   }
@@ -672,7 +677,7 @@ abstract class RDD[T: ClassTag](
    */
   def glom(): RDD[Array[T]] = withScope {
     new MapPartitionsRDD[Array[T], T](
-      this, (context, pid, iter: Iterator[Wrapper[T]]) => Iterator(Wrapper ~ iter))
+      this, (self, context, pid, iter: Iterator[Wrapper[T]]) => Iterator(Wrapper ~ iter))
   }
 
   /**
@@ -805,18 +810,15 @@ abstract class RDD[T: ClassTag](
     val cleanedF = sc.clean(f)
     new MapPartitionsRDD(
       this,
-      (context: TaskContext, index: Int, iter: Iterator[Wrapper[T]]) => {
+      (self: RDD[_], context: TaskContext, index: Int, iter: Iterator[Wrapper[T]]) => {
         val wrappers = ArrayBuffer[Wrapper[T]]()
         val payloads = ArrayBuffer[T]()
         iter foreach { x =>
           wrappers += x
           payloads += (x^)
         }
-        /**
-          * @todo Add poke after mapPartition.
-          */
         cleanedF(payloads.iterator).map[Wrapper[U]] {
-          case x : U => Wrapper(x, wrappers)
+          case x : U => Wrapper(x, wrappers) !? (new afterMapPartition, self)
         }
       },
       preservesPartitioning)
@@ -836,9 +838,9 @@ abstract class RDD[T: ClassTag](
       preservesPartitioning: Boolean = false): RDD[U] = withScope {
     new MapPartitionsRDD(
       this,
-      (context: TaskContext, index: Int, iter: Iterator[Wrapper[T]]) =>
+      (self: RDD[_], context: TaskContext, index: Int, iter: Iterator[Wrapper[T]]) =>
         { f(index, iter map { _.^() }).map[Wrapper[U]] {
-          case x : U => Wrapper[U](x) } },
+          case x : U => Wrapper[U](x) !? (new afterMapPartition, self) } },
       preservesPartitioning)
   }
 
@@ -850,9 +852,9 @@ abstract class RDD[T: ClassTag](
       preservesPartitioning: Boolean = false): RDD[U] = withScope {
     new MapPartitionsRDD(
       this,
-      (context: TaskContext, index: Int, iter: Iterator[Wrapper[T]]) =>
+      (self: RDD[_], context: TaskContext, index: Int, iter: Iterator[Wrapper[T]]) =>
         f(iter map { _.^ }).map[Wrapper[U]] {
-          case x: U => Wrapper[U](x) // @todo Add poke of after mapPartitions.
+          case x: U => Wrapper[U](x) !? (new afterMapPartition, self)
         }
     )
   }
@@ -870,9 +872,9 @@ abstract class RDD[T: ClassTag](
     val cleanedF = sc.clean(f)
     new MapPartitionsRDD(
       this,
-      (context: TaskContext, index: Int, iter: Iterator[Wrapper[T]])
+      (self: RDD[_], context: TaskContext, index: Int, iter: Iterator[Wrapper[T]])
       => { cleanedF(index, iter map { _.^ }).map[Wrapper[U]] {
-        case x : U => Wrapper[U](x) // @todo Add poke of after mapPartitions.
+        case x : U => Wrapper[U](x) !? (new afterMapPartition, self)
       } },
       preservesPartitioning)
   }
@@ -1058,7 +1060,8 @@ abstract class RDD[T: ClassTag](
     }
     sc.runJob(this, reducePartition, mergeResult)
     // Get the final result out of our Option, or throw an exception if the RDD was empty
-    jobResult.getOrElse(throw new UnsupportedOperationException("empty collection"))^
+    val result = jobResult.getOrElse(throw new UnsupportedOperationException("empty collection"))
+    (result !? (new afterReduce, new Attachment() + ("owner" -> sc.getCallSite().shortForm))) ^
   }
 
   /**

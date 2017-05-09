@@ -28,6 +28,7 @@ import scala.language.postfixOps
 import org.apache.spark._
 import org.apache.spark.annotation.DeveloperApi
 import org.apache.spark.serializer.Serializer
+import org.apache.spark.traceable.beforeCoGroupAggregate
 import org.apache.spark.util.collection.{CompactBuffer, ExternalAppendOnlyMap}
 import org.apache.spark.util.Utils
 
@@ -174,7 +175,7 @@ class CoGroupedRDD[K: ClassTag](
     val createCombiner: (Wrapper[CoGroupValue] => Wrapper[CoGroupCombiner]) = value => {
       val newCombiner = Array.fill(numRdds)(new CoGroup)
       newCombiner((value^)._2) += (value^)._1
-      Wrapper(newCombiner, value)
+      Wrapper(newCombiner, value) !? beforeCoGroupAggregate(numRdds)
     }
     val mergeValue: (Wrapper[CoGroupCombiner], Wrapper[CoGroupValue]) => Wrapper[CoGroupCombiner] =
       (combiner, value) => {

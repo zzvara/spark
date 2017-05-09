@@ -27,7 +27,7 @@ import org.apache.spark.{Partition, TaskContext}
  */
 private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
   var prev: RDD[T],
-  f: (TaskContext, Int, Iterator[Wrapper[T]]) => Iterator[Wrapper[U]],
+  f: (RDD[_], TaskContext, Int, Iterator[Wrapper[T]]) => Iterator[Wrapper[U]],
   preservesPartitioning: Boolean = false)
   extends RDD[U](prev) {
 
@@ -36,7 +36,7 @@ private[spark] class MapPartitionsRDD[U: ClassTag, T: ClassTag](
   override def getPartitions: Array[Partition] = firstParent[T].partitions
 
   override def compute(split: Partition, context: TaskContext): Iterator[Wrapper[U]] =
-    f(context, split.index, firstParent[T].iterator(split, context))
+    f(this, context, split.index, firstParent[T].iterator(split, context))
 
   override def clearDependencies() {
     super.clearDependencies()

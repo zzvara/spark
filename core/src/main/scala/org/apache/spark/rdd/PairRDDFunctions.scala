@@ -766,7 +766,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
   def mapValues[U](f: V => U): RDD[(K, U)] = self.withScope {
     val cleanF = self.context.clean(f)
     new MapPartitionsRDD[(K, U), (K, V)](self,
-      (context, pid, iter: Iterator[Wrapper[(K, V)]]) =>
+      (self, context, pid, iter: Iterator[Wrapper[(K, V)]]) =>
         iter.map {
           case x: Wrapper[(K, V)] =>
             x((payload : (K, V)) => { (payload._1, cleanF(payload._2)) })
@@ -781,7 +781,7 @@ class PairRDDFunctions[K, V](self: RDD[(K, V)])
   def flatMapValues[U](f: V => TraversableOnce[U]): RDD[(K, U)] = self.withScope {
     val cleanF = self.context.clean(f)
     new MapPartitionsRDD[(K, U), (K, V)](self,
-      (context, pid, iter: Iterator[Wrapper[(K, V)]]) =>
+      (self, context, pid, iter: Iterator[Wrapper[(K, V)]]) =>
         iter.flatMap[Wrapper[(K, U)]]{
           case x : Wrapper[(K, V)] => cleanF((x^)._2) map { v => Wrapper(((x^)._1, v), x) }
         },

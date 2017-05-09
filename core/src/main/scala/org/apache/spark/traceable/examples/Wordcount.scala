@@ -8,7 +8,6 @@ object Wordcount {
     val configuration = new SparkConf()
       .setMaster("local[10]")
       .setAppName("Traceable wordcount")
-      .set("spark.wrapper", "hu.sztaki.ilab.traceable.Wrapper")
 
     val context = new SparkContext(configuration)
 
