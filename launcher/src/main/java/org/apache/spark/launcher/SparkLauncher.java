@@ -547,6 +547,7 @@ public class SparkLauncher {
     // Since the child process is a batch script, let's quote things so that special characters are
     // preserved, otherwise the batch interpreter will mess up the arguments. Batch scripts are
     // weird.
+    /*
     if (isWindows()) {
       List<String> winCmd = new ArrayList<>();
       for (String arg : cmd) {
@@ -554,6 +555,7 @@ public class SparkLauncher {
       }
       cmd = winCmd;
     }
+    */
 
     ProcessBuilder pb = new ProcessBuilder(cmd.toArray(new String[cmd.size()]));
     for (Map.Entry<String, String> e : builder.childEnv.entrySet()) {
